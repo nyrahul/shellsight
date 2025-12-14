@@ -13,6 +13,8 @@ import {
   BarChart3,
   Users,
   Plug,
+  Shield,
+  RotateCcw,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -49,7 +51,7 @@ const menuItems: MenuItem[] = [
         children: [
           { id: 'job-details', label: 'Job Details', icon: <FileText className="w-4 h-4" /> },
           { id: 'app-logs', label: 'App Logs', icon: <FileText className="w-4 h-4" /> },
-          { id: 'shell-replay', label: 'Shell Replay', icon: <Terminal className="w-4 h-4" /> },
+          { id: 'shell-replay', label: 'Shell Replay', icon: <RotateCcw className="w-4 h-4" /> },
           { id: 'execution-details', label: 'Execution Details', icon: <FileText className="w-4 h-4" /> },
           { id: 'resource-usage', label: 'Resource Usage', icon: <Cpu className="w-4 h-4" /> },
           { id: 'generated-artifacts', label: 'Generated Artifacts', icon: <Package className="w-4 h-4" /> },
@@ -136,8 +138,8 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
     <div className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col">
       <div className="p-4 border-b border-gray-200">
         <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-          <Terminal className="w-6 h-6 text-blue-600" />
-          Execution Hub
+          <Shield className="w-6 h-6 text-blue-600" />
+          AI Sandboxing Hub
         </h1>
       </div>
       <nav className="flex-1 overflow-y-auto py-4">
