@@ -15,6 +15,7 @@ import {
   Plug,
   Shield,
   RotateCcw,
+  List,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -52,6 +53,7 @@ const menuItems: MenuItem[] = [
           { id: 'job-details', label: 'Job Details', icon: <FileText className="w-4 h-4" /> },
           { id: 'app-logs', label: 'App Logs', icon: <FileText className="w-4 h-4" /> },
           { id: 'shell-replay', label: 'Shell Replay', icon: <RotateCcw className="w-4 h-4" /> },
+          { id: 'shell-replay-list', label: 'Shell Replay List', icon: <List className="w-4 h-4" /> },
           { id: 'execution-details', label: 'Execution Details', icon: <FileText className="w-4 h-4" /> },
           { id: 'resource-usage', label: 'Resource Usage', icon: <Cpu className="w-4 h-4" /> },
           { id: 'generated-artifacts', label: 'Generated Artifacts', icon: <Package className="w-4 h-4" /> },

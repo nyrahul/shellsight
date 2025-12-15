@@ -5,6 +5,7 @@ import MCPServers from './pages/MCPServers';
 import JobDetails from './pages/JobDetails';
 import AppLogs from './pages/AppLogs';
 import ShellReplayPage from './pages/ShellReplay';
+import ShellReplayListPage from './pages/ShellReplayList';
 import ExecutionDetails from './pages/ExecutionDetails';
 import ResourceUsagePage from './pages/ResourceUsage';
 import GeneratedArtifacts from './pages/GeneratedArtifacts';
@@ -27,6 +28,8 @@ function App() {
         return <AppLogs />;
       case 'shell-replay':
         return <ShellReplayPage />;
+      case 'shell-replay-list':
+        return <ShellReplayListPage />;
       case 'execution-details':
         return <ExecutionDetails />;
       case 'resource-usage':

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Terminal, Play, Square, RefreshCw } from 'lucide-react';
+import { Terminal, Play, Square, RefreshCw, Download } from 'lucide-react';
 
 interface ScriptFolder {
   name: string;
@@ -17,8 +17,13 @@ export default function ShellReplayPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string>('');
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(4);
+  const [progress, setProgress] = useState<number>(0);
+  const [totalDuration, setTotalDuration] = useState<number>(0);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
   const wsRef = useRef<WebSocket | null>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const startTimeRef = useRef<number>(0);
+  const progressIntervalRef = useRef<number | null>(null);
 
   // Fetch available script folders
   const fetchFolders = useCallback(async () => {
@@ -41,6 +46,58 @@ export default function ShellReplayPage() {
     fetchFolders();
   }, [fetchFolders]);
 
+  // Format duration in seconds to human readable string
+  const formatDuration = (seconds: number): string => {
+    if (seconds < 60) {
+      return `${Math.round(seconds)}s`;
+    }
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    if (mins < 60) {
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    }
+    const hours = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+  };
+
+  // Start progress tracking
+  const startProgressTracking = (duration: number, speed: number) => {
+    setTotalDuration(duration);
+    setProgress(0);
+    setElapsedTime(0);
+    startTimeRef.current = Date.now();
+
+    // Clear any existing interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+
+    // Update progress every 100ms
+    const effectiveDuration = duration / speed;
+    progressIntervalRef.current = window.setInterval(() => {
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      const progressPercent = Math.min((elapsed / effectiveDuration) * 100, 100);
+      setElapsedTime(elapsed * speed); // Show elapsed in original time scale
+      setProgress(progressPercent);
+    }, 100);
+  };
+
+  // Stop progress tracking
+  const stopProgressTracking = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopProgressTracking();
+    };
+  }, []);
+
   // Connect to WebSocket
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -62,6 +119,9 @@ export default function ShellReplayPage() {
           case 'start':
             setOutput('');
             setIsPlaying(true);
+            if (data.duration && data.speed) {
+              startProgressTracking(data.duration, data.speed);
+            }
             break;
           case 'output':
             setOutput(prev => prev + data.data);
@@ -72,13 +132,17 @@ export default function ShellReplayPage() {
             break;
           case 'end':
             setIsPlaying(false);
+            stopProgressTracking();
+            setProgress(100);
             break;
           case 'stopped':
             setIsPlaying(false);
+            stopProgressTracking();
             break;
           case 'error':
             setError(data.message);
             setIsPlaying(false);
+            stopProgressTracking();
             break;
         }
       } catch {
@@ -90,6 +154,7 @@ export default function ShellReplayPage() {
     ws.onclose = () => {
       setIsConnected(false);
       setIsPlaying(false);
+      stopProgressTracking();
     };
 
     ws.onerror = () => {
@@ -131,11 +196,18 @@ export default function ShellReplayPage() {
     }
   };
 
+  // Download recording as tgz
+  const downloadRecording = () => {
+    if (!selectedFolder) return;
+    window.open(`${API_URL}/api/script-download/${encodeURIComponent(selectedFolder)}`, '_blank');
+  };
+
   // Convert ANSI escape codes to styled HTML (basic support)
   const formatOutput = (text: string): string => {
     // Remove or convert common ANSI codes for display
     return text
       .replace(/\x1b\[[0-9;]*m/g, '') // Remove color codes
+      .replace(/\x1b\[\?[0-9;]*[A-Za-z]/g, '') // Remove private mode sequences (e.g., ?2004h bracketed paste)
       .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') // Remove other escape sequences
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n');
@@ -209,6 +281,15 @@ export default function ShellReplayPage() {
               Replay
             </button>
           )}
+          <button
+            onClick={downloadRecording}
+            disabled={!selectedFolder}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Download recording as .tgz"
+          >
+            <Download className="w-4 h-4" />
+            Download
+          </button>
         </div>
       </div>
 
@@ -251,6 +332,26 @@ export default function ShellReplayPage() {
             </div>
           )}
         </div>
+
+        {/* Progress Bar */}
+        {(isPlaying || progress > 0) && (
+          <div className="px-4 py-2 bg-gray-800 border-t border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 transition-all duration-100"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="text-gray-400 text-xs whitespace-nowrap min-w-[100px] text-right">
+                {formatDuration(elapsedTime)} / {formatDuration(totalDuration)}
+              </div>
+              <div className="text-gray-500 text-xs whitespace-nowrap">
+                {Math.round(progress)}%
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-2 text-gray-400 text-xs">

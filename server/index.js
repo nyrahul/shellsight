@@ -6,6 +6,7 @@ import { readdirSync, statSync, readFileSync, existsSync } from 'fs';
 import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import * as tar from 'tar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,6 +20,29 @@ app.use(express.json());
 
 // Base directory for script recordings (configurable via SSNREC env variable)
 const SSNREC_DIR = process.env.SSNREC || join(__dirname, '..', 'SSNREC');
+
+// Calculate duration from timing file (sum of all delay values)
+function getRecordingDuration(timingPath) {
+  try {
+    const content = readFileSync(timingPath, 'utf-8');
+    const lines = content.trim().split('\n');
+    let totalSeconds = 0;
+
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 1) {
+        const delay = parseFloat(parts[0]);
+        if (!isNaN(delay)) {
+          totalSeconds += delay;
+        }
+      }
+    }
+
+    return totalSeconds;
+  } catch (error) {
+    return 0;
+  }
+}
 
 // API to list all script folders
 app.get('/api/script-folders', (req, res) => {
@@ -36,10 +60,15 @@ app.get('/api/script-folders', (req, res) => {
       const timingPath = join(entryPath, 'timing');
       const typescriptPath = join(entryPath, 'typescript');
       return existsSync(timingPath) && existsSync(typescriptPath);
-    }).map(folder => ({
-      name: folder,
-      displayName: folder.replace(/^\./, ''), // Remove leading dot for display
-    }));
+    }).map(folder => {
+      const timingPath = join(SSNREC_DIR, folder, 'timing');
+      const duration = getRecordingDuration(timingPath);
+      return {
+        name: folder,
+        displayName: folder.replace(/^\./, ''), // Remove leading dot for display
+        duration, // Duration in seconds
+      };
+    });
 
     res.json({ folders });
   } catch (error) {
@@ -59,6 +88,36 @@ app.get('/api/script-content/:folder', (req, res) => {
 
     const content = readFileSync(typescriptPath, 'utf-8');
     res.json({ content });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API to download script recording as tgz
+app.get('/api/script-download/:folder', (req, res) => {
+  try {
+    const folderName = req.params.folder;
+    const folderPath = join(SSNREC_DIR, folderName);
+    const timingPath = join(folderPath, 'timing');
+    const typescriptPath = join(folderPath, 'typescript');
+
+    if (!existsSync(timingPath) || !existsSync(typescriptPath)) {
+      return res.status(404).json({ error: 'Script files not found' });
+    }
+
+    // Set headers for tgz download
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename="${folderName}.tgz"`);
+
+    // Create tar.gz stream and pipe to response
+    tar.create(
+      {
+        gzip: true,
+        cwd: SSNREC_DIR,
+        prefix: folderName
+      },
+      [join(folderName, 'timing'), join(folderName, 'typescript')]
+    ).pipe(res);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -90,7 +149,13 @@ wss.on('connection', (ws) => {
         }
 
         const speed = data.speed || 1;
-        ws.send(JSON.stringify({ type: 'start', message: `Starting replay at ${speed}x speed...` }));
+        const duration = getRecordingDuration(timingPath);
+        ws.send(JSON.stringify({
+          type: 'start',
+          message: `Starting replay at ${speed}x speed...`,
+          duration,
+          speed
+        }));
 
         // Use scriptreplay command with --divisor for speed control
         // scriptreplay --timing=timing --divisor=N typescript
