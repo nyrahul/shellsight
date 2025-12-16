@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Terminal, Play, Square, RefreshCw, Download } from 'lucide-react';
+import { Terminal as TerminalIcon, Play, Square, RefreshCw, Download, Maximize2, Minimize2 } from 'lucide-react';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
 
 interface ScriptFolder {
   name: string;
@@ -9,10 +12,11 @@ interface ScriptFolder {
 const API_URL = `http://${window.location.hostname}:3001`;
 const WS_URL = `ws://${window.location.hostname}:3001`;
 
+const SPEED_OPTIONS = [1, 2, 4, 6, 8, 10];
+
 export default function ShellReplayPage() {
   const [folders, setFolders] = useState<ScriptFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
-  const [output, setOutput] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string>('');
@@ -20,10 +24,74 @@ export default function ShellReplayPage() {
   const [progress, setProgress] = useState<number>(0);
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [isMaximized, setIsMaximized] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const terminalRef = useRef<HTMLDivElement>(null);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const startTimeRef = useRef<number>(0);
   const progressIntervalRef = useRef<number | null>(null);
+
+  // Format duration in seconds to human readable string
+  const formatDuration = (seconds: number): string => {
+    if (seconds < 60) {
+      return `${Math.round(seconds)}s`;
+    }
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    if (mins < 60) {
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    }
+    const hours = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+  };
+
+  // Initialize xterm.js terminal
+  useEffect(() => {
+    if (!terminalContainerRef.current || terminalRef.current) return;
+
+    const term = new Terminal({
+      cursorBlink: false,
+      fontSize: 14,
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      theme: {
+        background: '#1a1a1a',
+        foreground: '#f0f0f0',
+        cursor: '#f0f0f0',
+        selectionBackground: '#444444',
+      },
+      scrollback: 10000,
+      convertEol: true,
+    });
+
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(terminalContainerRef.current);
+
+    // Fit terminal to container
+    setTimeout(() => {
+      fitAddon.fit();
+    }, 0);
+
+    terminalRef.current = term;
+    fitAddonRef.current = fitAddon;
+
+    // Handle window resize
+    const handleResize = () => {
+      if (fitAddonRef.current) {
+        fitAddonRef.current.fit();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      term.dispose();
+      terminalRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, []);
 
   // Fetch available script folders
   const fetchFolders = useCallback(async () => {
@@ -46,21 +114,6 @@ export default function ShellReplayPage() {
     fetchFolders();
   }, [fetchFolders]);
 
-  // Format duration in seconds to human readable string
-  const formatDuration = (seconds: number): string => {
-    if (seconds < 60) {
-      return `${Math.round(seconds)}s`;
-    }
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.round(seconds % 60);
-    if (mins < 60) {
-      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-    }
-    const hours = Math.floor(mins / 60);
-    const remainingMins = mins % 60;
-    return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
-  };
-
   // Start progress tracking
   const startProgressTracking = (duration: number, speed: number) => {
     setTotalDuration(duration);
@@ -68,17 +121,15 @@ export default function ShellReplayPage() {
     setElapsedTime(0);
     startTimeRef.current = Date.now();
 
-    // Clear any existing interval
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
     }
 
-    // Update progress every 100ms
     const effectiveDuration = duration / speed;
     progressIntervalRef.current = window.setInterval(() => {
       const elapsed = (Date.now() - startTimeRef.current) / 1000;
       const progressPercent = Math.min((elapsed / effectiveDuration) * 100, 100);
-      setElapsedTime(elapsed * speed); // Show elapsed in original time scale
+      setElapsedTime(elapsed * speed);
       setProgress(progressPercent);
     }, 100);
   };
@@ -97,6 +148,53 @@ export default function ShellReplayPage() {
       stopProgressTracking();
     };
   }, []);
+
+  // Refit terminal when maximized state changes
+  useEffect(() => {
+    if (fitAddonRef.current) {
+      setTimeout(() => {
+        fitAddonRef.current?.fit();
+      }, 100);
+    }
+  }, [isMaximized]);
+
+  // Toggle maximize
+  const toggleMaximize = () => {
+    setIsMaximized(prev => !prev);
+  };
+
+  // Handle keyboard shortcuts for speed control
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle arrow keys when not in an input field and not playing
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || isPlaying) {
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setPlaybackSpeed(prev => {
+          const currentIndex = SPEED_OPTIONS.indexOf(prev);
+          if (currentIndex < SPEED_OPTIONS.length - 1) {
+            return SPEED_OPTIONS[currentIndex + 1];
+          }
+          return prev;
+        });
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setPlaybackSpeed(prev => {
+          const currentIndex = SPEED_OPTIONS.indexOf(prev);
+          if (currentIndex > 0) {
+            return SPEED_OPTIONS[currentIndex - 1];
+          }
+          return prev;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying]);
 
   // Connect to WebSocket
   const connectWebSocket = useCallback(() => {
@@ -117,17 +215,19 @@ export default function ShellReplayPage() {
 
         switch (data.type) {
           case 'start':
-            setOutput('');
+            // Clear terminal for new replay
+            if (terminalRef.current) {
+              terminalRef.current.clear();
+            }
             setIsPlaying(true);
             if (data.duration && data.speed) {
               startProgressTracking(data.duration, data.speed);
             }
             break;
           case 'output':
-            setOutput(prev => prev + data.data);
-            // Auto-scroll to bottom
+            // Write directly to xterm.js terminal
             if (terminalRef.current) {
-              terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+              terminalRef.current.write(data.data);
             }
             break;
           case 'end':
@@ -146,8 +246,10 @@ export default function ShellReplayPage() {
             break;
         }
       } catch {
-        // Handle non-JSON messages
-        setOutput(prev => prev + event.data);
+        // Write raw data to terminal
+        if (terminalRef.current) {
+          terminalRef.current.write(event.data);
+        }
       }
     };
 
@@ -181,7 +283,10 @@ export default function ShellReplayPage() {
       return;
     }
 
-    setOutput('');
+    // Clear terminal before starting
+    if (terminalRef.current) {
+      terminalRef.current.clear();
+    }
     wsRef.current.send(JSON.stringify({
       action: 'replay',
       folder: selectedFolder,
@@ -200,17 +305,6 @@ export default function ShellReplayPage() {
   const downloadRecording = () => {
     if (!selectedFolder) return;
     window.open(`${API_URL}/api/script-download/${encodeURIComponent(selectedFolder)}`, '_blank');
-  };
-
-  // Convert ANSI escape codes to styled HTML (basic support)
-  const formatOutput = (text: string): string => {
-    // Remove or convert common ANSI codes for display
-    return text
-      .replace(/\x1b\[[0-9;]*m/g, '') // Remove color codes
-      .replace(/\x1b\[\?[0-9;]*[A-Za-z]/g, '') // Remove private mode sequences (e.g., ?2004h bracketed paste)
-      .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') // Remove other escape sequences
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
   };
 
   return (
@@ -253,8 +347,8 @@ export default function ShellReplayPage() {
           <select
             value={playbackSpeed}
             onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isPlaying}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value={1}>1x</option>
             <option value={2}>2x</option>
@@ -299,9 +393,9 @@ export default function ShellReplayPage() {
         </div>
       )}
 
-      <div className="flex-1 bg-gray-900 rounded-lg overflow-hidden flex flex-col min-h-[500px]">
+      <div className={`bg-gray-900 rounded-lg overflow-hidden flex flex-col ${isMaximized ? 'fixed inset-6 z-50' : 'flex-1 min-h-[500px]'}`}>
         <div className="flex items-center gap-2 px-4 py-3 bg-gray-800 border-b border-gray-700">
-          <Terminal className="w-5 h-5 text-green-400" />
+          <TerminalIcon className="w-5 h-5 text-green-400" />
           <span className="text-green-400 font-mono text-sm">
             {selectedFolder ? `Replay: ${selectedFolder}` : 'Shell Replay Console'}
           </span>
@@ -311,27 +405,21 @@ export default function ShellReplayPage() {
               Playing...
             </span>
           )}
+          <button
+            onClick={toggleMaximize}
+            className={`${isPlaying ? '' : 'ml-auto'} p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors`}
+            title={isMaximized ? 'Minimize' : 'Maximize'}
+          >
+            {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
         </div>
 
+        {/* xterm.js terminal container */}
         <div
-          ref={terminalRef}
-          className="flex-1 p-4 font-mono text-sm overflow-auto"
+          ref={terminalContainerRef}
+          className="flex-1 p-2"
           style={{ backgroundColor: '#1a1a1a' }}
-        >
-          {output ? (
-            <pre className="text-gray-100 whitespace-pre-wrap break-words">
-              {formatOutput(output)}
-            </pre>
-          ) : (
-            <div className="text-gray-500 flex flex-col items-center justify-center h-full">
-              <Terminal className="w-12 h-12 mb-4 opacity-50" />
-              <p>Select a recording and click "Replay" to start</p>
-              <p className="text-sm mt-2 opacity-75">
-                Recordings are loaded from the SSNREC directory
-              </p>
-            </div>
-          )}
-        </div>
+        />
 
         {/* Progress Bar */}
         {(isPlaying || progress > 0) && (
@@ -358,8 +446,9 @@ export default function ShellReplayPage() {
             <span>user@sandbox:~$</span>
             {isPlaying && <span className="text-green-400 animate-pulse">▊</span>}
           </div>
-          <div className="text-gray-500 text-xs">
-            {folders.length} recording{folders.length !== 1 ? 's' : ''} available
+          <div className="flex items-center gap-4 text-gray-500 text-xs">
+            <span>Speed: {playbackSpeed}x</span>
+            <span>{folders.length} recording{folders.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
       </div>

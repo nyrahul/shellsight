@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Terminal, Play, Square, RefreshCw, Download, List } from 'lucide-react';
+import { Terminal as TerminalIcon, Play, Square, RefreshCw, Download, List, Maximize2, Minimize2, PanelRightOpen, PanelRightClose, RotateCcw } from 'lucide-react';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
 
 interface ScriptRecording {
   name: string;
@@ -13,9 +16,10 @@ interface ScriptRecording {
 const API_URL = `http://${window.location.hostname}:3001`;
 const WS_URL = `ws://${window.location.hostname}:3001`;
 
+const SPEED_OPTIONS = [1, 2, 4, 6, 8, 10, 12];
+
 export default function ShellReplayListPage() {
   const [recordings, setRecordings] = useState<ScriptRecording[]>([]);
-  const [output, setOutput] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingRecording, setPlayingRecording] = useState<string>('');
   const [isConnected, setIsConnected] = useState(false);
@@ -24,8 +28,12 @@ export default function ShellReplayListPage() {
   const [progress, setProgress] = useState<number>(0);
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const terminalRef = useRef<HTMLDivElement>(null);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const startTimeRef = useRef<number>(0);
   const progressIntervalRef = useRef<number | null>(null);
 
@@ -46,7 +54,6 @@ export default function ShellReplayListPage() {
 
   // Parse folder name to extract workload name and timestamp
   const parseRecording = (folderName: string, duration: number = 0): ScriptRecording => {
-    // Match pattern: name_TIMESTAMP where TIMESTAMP is epoch seconds
     const match = folderName.match(/^(.+)_(\d{10,})$/);
 
     if (match) {
@@ -65,7 +72,6 @@ export default function ShellReplayListPage() {
       };
     }
 
-    // Fallback if pattern doesn't match
     return {
       name: folderName,
       workloadName: folderName,
@@ -75,6 +81,52 @@ export default function ShellReplayListPage() {
       displayDuration: formatDuration(duration)
     };
   };
+
+  // Initialize xterm.js terminal
+  useEffect(() => {
+    if (!terminalContainerRef.current || terminalRef.current) return;
+
+    const term = new Terminal({
+      cursorBlink: false,
+      fontSize: 14,
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      theme: {
+        background: '#1a1a1a',
+        foreground: '#f0f0f0',
+        cursor: '#f0f0f0',
+        selectionBackground: '#444444',
+      },
+      scrollback: 10000,
+      convertEol: true,
+    });
+
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(terminalContainerRef.current);
+
+    // Fit terminal to container
+    setTimeout(() => {
+      fitAddon.fit();
+    }, 0);
+
+    terminalRef.current = term;
+    fitAddonRef.current = fitAddon;
+
+    // Handle window resize
+    const handleResize = () => {
+      if (fitAddonRef.current) {
+        fitAddonRef.current.fit();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      term.dispose();
+      terminalRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, []);
 
   // Fetch available script folders
   const fetchRecordings = useCallback(async () => {
@@ -108,17 +160,15 @@ export default function ShellReplayListPage() {
     setElapsedTime(0);
     startTimeRef.current = Date.now();
 
-    // Clear any existing interval
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
     }
 
-    // Update progress every 100ms
     const effectiveDuration = duration / speed;
     progressIntervalRef.current = window.setInterval(() => {
       const elapsed = (Date.now() - startTimeRef.current) / 1000;
       const progressPercent = Math.min((elapsed / effectiveDuration) * 100, 100);
-      setElapsedTime(elapsed * speed); // Show elapsed in original time scale
+      setElapsedTime(elapsed * speed);
       setProgress(progressPercent);
     }, 100);
   };
@@ -137,6 +187,60 @@ export default function ShellReplayListPage() {
       stopProgressTracking();
     };
   }, []);
+
+  // Refit terminal when maximized, minimized, or playing state changes
+  useEffect(() => {
+    if (fitAddonRef.current && !isMinimized) {
+      setTimeout(() => {
+        fitAddonRef.current?.fit();
+      }, 100);
+    }
+  }, [isMaximized, isMinimized, isPlaying]);
+
+  // Toggle maximize
+  const toggleMaximize = () => {
+    setIsMinimized(false);
+    setIsMaximized(prev => !prev);
+  };
+
+  // Toggle minimize
+  const toggleMinimize = () => {
+    setIsMaximized(false);
+    setIsMinimized(prev => !prev);
+  };
+
+  // Handle keyboard shortcuts for speed control
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle arrow keys when not in an input field and not playing
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || isPlaying) {
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setPlaybackSpeed(prev => {
+          const currentIndex = SPEED_OPTIONS.indexOf(prev);
+          if (currentIndex < SPEED_OPTIONS.length - 1) {
+            return SPEED_OPTIONS[currentIndex + 1];
+          }
+          return prev;
+        });
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setPlaybackSpeed(prev => {
+          const currentIndex = SPEED_OPTIONS.indexOf(prev);
+          if (currentIndex > 0) {
+            return SPEED_OPTIONS[currentIndex - 1];
+          }
+          return prev;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying]);
 
   // Connect to WebSocket
   const connectWebSocket = useCallback(() => {
@@ -157,16 +261,19 @@ export default function ShellReplayListPage() {
 
         switch (data.type) {
           case 'start':
-            setOutput('');
+            // Clear terminal for new replay
+            if (terminalRef.current) {
+              terminalRef.current.clear();
+            }
             setIsPlaying(true);
             if (data.duration && data.speed) {
               startProgressTracking(data.duration, data.speed);
             }
             break;
           case 'output':
-            setOutput(prev => prev + data.data);
+            // Write directly to xterm.js terminal
             if (terminalRef.current) {
-              terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+              terminalRef.current.write(data.data);
             }
             break;
           case 'end':
@@ -188,7 +295,10 @@ export default function ShellReplayListPage() {
             break;
         }
       } catch {
-        setOutput(prev => prev + event.data);
+        // Write raw data to terminal
+        if (terminalRef.current) {
+          terminalRef.current.write(event.data);
+        }
       }
     };
 
@@ -223,7 +333,10 @@ export default function ShellReplayListPage() {
       return;
     }
 
-    setOutput('');
+    // Clear terminal before starting
+    if (terminalRef.current) {
+      terminalRef.current.clear();
+    }
     setPlayingRecording(recordingName);
     wsRef.current.send(JSON.stringify({
       action: 'replay',
@@ -239,38 +352,39 @@ export default function ShellReplayListPage() {
     }
   };
 
+  // Restart replay from beginning
+  const restartReplay = () => {
+    if (playingRecording) {
+      stopReplay();
+      // Small delay to ensure stop is processed before starting again
+      setTimeout(() => {
+        startReplay(playingRecording);
+      }, 100);
+    }
+  };
+
   // Download recording as tgz
   const downloadRecording = (recordingName: string) => {
     window.open(`${API_URL}/api/script-download/${encodeURIComponent(recordingName)}`, '_blank');
-  };
-
-  // Format output - remove ANSI escape codes
-  const formatOutput = (text: string): string => {
-    return text
-      .replace(/\x1b\[[0-9;]*m/g, '')
-      .replace(/\x1b\[\?[0-9;]*[A-Za-z]/g, '')
-      .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
   };
 
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Shell Replay List</h1>
-          <p className="text-gray-600 mt-1">Browse and replay shell session recordings</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Shell Replay List</h1>
+          <p className="text-gray-600 mt-1 dark:text-gray-400">Browse and replay shell session recordings</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               {isConnected ? 'Connected' : 'Disconnected'}
             </span>
           </div>
           <button
             onClick={fetchRecordings}
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-400 dark:hover:bg-gray-700"
             title="Refresh recording list"
           >
             <RefreshCw className="w-4 h-4" />
@@ -278,8 +392,8 @@ export default function ShellReplayListPage() {
           <select
             value={playbackSpeed}
             onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isPlaying}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
           >
             <option value={1}>1x</option>
             <option value={2}>2x</option>
@@ -293,26 +407,35 @@ export default function ShellReplayListPage() {
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm dark:bg-red-900/30 dark:border-red-800 dark:text-red-400">
           {error}
         </div>
       )}
 
-      <div className="flex gap-6 flex-1 min-h-0">
+      <div className={`flex gap-6 flex-1 min-h-0 ${isMaximized ? 'fixed inset-0 z-50 p-6 bg-gray-100 dark:bg-gray-900' : ''}`}>
         {/* Recording List */}
-        <div className="w-1/2 bg-white rounded-lg border border-gray-200 flex flex-col">
-          <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
-            <List className="w-5 h-5 text-gray-600" />
-            <span className="font-medium text-gray-700">Recordings</span>
-            <span className="ml-auto text-sm text-gray-500">
+        <div className={`bg-white rounded-lg border border-gray-200 flex flex-col dark:bg-gray-800 dark:border-gray-700 ${isMaximized ? 'hidden' : isMinimized ? 'flex-1' : 'w-1/2'}`}>
+          <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg dark:bg-gray-700 dark:border-gray-600">
+            <List className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <span className="font-medium text-gray-700 dark:text-gray-200">Recordings</span>
+            <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
               {recordings.length} recording{recordings.length !== 1 ? 's' : ''}
             </span>
+            {isMinimized && (
+              <button
+                onClick={toggleMinimize}
+                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-600"
+                title="Show Console"
+              >
+                <PanelRightOpen className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           <div className="flex-1 overflow-auto">
             {recordings.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500 p-8">
-                <Terminal className="w-12 h-12 mb-4 opacity-50" />
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400 p-8">
+                <TerminalIcon className="w-12 h-12 mb-4 opacity-50" />
                 <p>No recordings found</p>
                 <p className="text-sm mt-2 opacity-75">
                   Recordings are loaded from the SSNREC directory
@@ -320,35 +443,35 @@ export default function ShellReplayListPage() {
               </div>
             ) : (
               <table className="w-full">
-                <thead className="bg-gray-50 sticky top-0">
+                <thead className="bg-gray-50 sticky top-0 dark:bg-gray-700">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
                       Time
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
                       Workload
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
                       Duration
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {recordings.map((recording) => (
                     <tr
                       key={recording.name}
-                      className={`hover:bg-gray-50 ${playingRecording === recording.name ? 'bg-blue-50' : ''}`}
+                      className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${playingRecording === recording.name ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
                     >
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap dark:text-gray-400">
                         {recording.displayTime}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                      <td className="px-4 py-3 text-sm text-gray-900 font-medium dark:text-gray-200">
                         {recording.workloadName}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap dark:text-gray-400">
                         {recording.displayDuration}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -356,7 +479,7 @@ export default function ShellReplayListPage() {
                           {isPlaying && playingRecording === recording.name ? (
                             <button
                               onClick={stopReplay}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors dark:hover:bg-red-900/30"
                               title="Stop replay"
                             >
                               <Square className="w-4 h-4" />
@@ -365,7 +488,7 @@ export default function ShellReplayListPage() {
                             <button
                               onClick={() => startReplay(recording.name)}
                               disabled={!isConnected || isPlaying}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed dark:hover:bg-green-900/30"
                               title="Play replay"
                             >
                               <Play className="w-4 h-4" />
@@ -373,7 +496,7 @@ export default function ShellReplayListPage() {
                           )}
                           <button
                             onClick={() => downloadRecording(recording.name)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors dark:hover:bg-blue-900/30"
                             title="Download as .tgz"
                           >
                             <Download className="w-4 h-4" />
@@ -389,9 +512,9 @@ export default function ShellReplayListPage() {
         </div>
 
         {/* Terminal Output */}
-        <div className="w-1/2 bg-gray-900 rounded-lg overflow-hidden flex flex-col">
+        <div className={`bg-gray-900 rounded-lg overflow-hidden flex flex-col ${isMaximized ? 'flex-1' : 'w-1/2'} ${isMinimized ? 'hidden' : ''}`}>
           <div className="flex items-center gap-2 px-4 py-3 bg-gray-800 border-b border-gray-700">
-            <Terminal className="w-5 h-5 text-green-400" />
+            <TerminalIcon className="w-5 h-5 text-green-400" />
             <span className="text-green-400 font-mono text-sm">
               {playingRecording ? `Replay: ${playingRecording}` : 'Shell Replay Console'}
             </span>
@@ -401,24 +524,39 @@ export default function ShellReplayListPage() {
                 Playing...
               </span>
             )}
+            <div className={`${isPlaying ? '' : 'ml-auto'} flex items-center gap-1`}>
+              {playingRecording && (
+                <button
+                  onClick={restartReplay}
+                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                  title="Restart Replay"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                onClick={toggleMinimize}
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                title="Hide Console"
+              >
+                <PanelRightClose className="w-4 h-4" />
+              </button>
+              <button
+                onClick={toggleMaximize}
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                title={isMaximized ? 'Restore' : 'Maximize'}
+              >
+                {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
+          {/* xterm.js terminal container */}
           <div
-            ref={terminalRef}
-            className="flex-1 p-4 font-mono text-sm overflow-auto"
-            style={{ backgroundColor: '#1a1a1a' }}
-          >
-            {output ? (
-              <pre className="text-gray-100 whitespace-pre-wrap break-words">
-                {formatOutput(output)}
-              </pre>
-            ) : (
-              <div className="text-gray-500 flex flex-col items-center justify-center h-full">
-                <Terminal className="w-12 h-12 mb-4 opacity-50" />
-                <p>Click play on a recording to start</p>
-              </div>
-            )}
-          </div>
+            ref={terminalContainerRef}
+            className="flex-1 p-2"
+            style={{ backgroundColor: '#1a1a1a', minHeight: '300px' }}
+          />
 
           {/* Progress Bar */}
           {(isPlaying || progress > 0) && (
@@ -445,8 +583,8 @@ export default function ShellReplayListPage() {
               <span>user@sandbox:~$</span>
               {isPlaying && <span className="text-green-400 animate-pulse">▊</span>}
             </div>
-            <div className="text-gray-500 text-xs">
-              Speed: {playbackSpeed}x
+            <div className="flex items-center gap-4 text-gray-500 text-xs">
+              <span>Speed: {playbackSpeed}x</span>
             </div>
           </div>
         </div>

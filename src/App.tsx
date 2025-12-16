@@ -48,7 +48,7 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
       <main className="flex-1 overflow-y-auto">
         {renderPage()}

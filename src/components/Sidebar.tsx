@@ -14,9 +14,13 @@ import {
   Users,
   Plug,
   Shield,
-  RotateCcw,
   List,
+  Sun,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface MenuItem {
   id: string;
@@ -51,8 +55,6 @@ const menuItems: MenuItem[] = [
         icon: <Terminal className="w-4 h-4" />,
         children: [
           { id: 'job-details', label: 'Job Details', icon: <FileText className="w-4 h-4" /> },
-          { id: 'app-logs', label: 'App Logs', icon: <FileText className="w-4 h-4" /> },
-          { id: 'shell-replay', label: 'Shell Replay', icon: <RotateCcw className="w-4 h-4" /> },
           { id: 'shell-replay-list', label: 'Shell Replay List', icon: <List className="w-4 h-4" /> },
           { id: 'execution-details', label: 'Execution Details', icon: <FileText className="w-4 h-4" /> },
           { id: 'resource-usage', label: 'Resource Usage', icon: <Cpu className="w-4 h-4" /> },
@@ -82,6 +84,11 @@ const menuItems: MenuItem[] = [
 
 export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['inventory', 'monitor', 'execution']));
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+
+  const isExpanded = !isCollapsed || isHovered;
 
   const toggleExpand = (id: string) => {
     const newExpanded = new Set(expandedItems);
@@ -95,7 +102,7 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
 
   const renderMenuItem = (item: MenuItem, level: number = 0) => {
     const hasChildren = item.children && item.children.length > 0;
-    const isExpanded = expandedItems.has(item.id);
+    const isItemExpanded = expandedItems.has(item.id);
     const isActive = currentPage === item.id;
 
     return (
@@ -112,22 +119,23 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
             level === 0 ? 'font-medium' : ''
           } ${
             isActive
-              ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-              : 'text-gray-700 hover:bg-gray-100'
+              ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+              : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
           }`}
-          style={{ paddingLeft: `${1 + level * 1.5}rem` }}
+          style={{ paddingLeft: isExpanded ? `${1 + level * 1.5}rem` : '0.75rem' }}
+          title={!isExpanded ? item.label : undefined}
         >
-          <div className="flex items-center gap-3">
+          <div className={`flex items-center ${isExpanded ? 'gap-3' : 'justify-center w-full'}`}>
             {item.icon}
-            <span>{item.label}</span>
+            {isExpanded && <span className="whitespace-nowrap">{item.label}</span>}
           </div>
-          {hasChildren && (
-            <div className="text-gray-400">
-              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          {hasChildren && isExpanded && (
+            <div className="text-gray-400 dark:text-gray-500">
+              {isItemExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </div>
           )}
         </button>
-        {hasChildren && isExpanded && (
+        {hasChildren && isItemExpanded && isExpanded && (
           <div>
             {item.children!.map((child) => renderMenuItem(child, level + 1))}
           </div>
@@ -137,16 +145,36 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
   };
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col">
-      <div className="p-4 border-b border-gray-200">
-        <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-          <Shield className="w-6 h-6 text-blue-600" />
-          AI Sandboxing Hub
+    <div
+      className={`${isExpanded ? 'w-64' : 'w-14'} bg-white border-r border-gray-200 h-screen flex flex-col dark:bg-gray-800 dark:border-gray-700 transition-all duration-300 ease-in-out`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <h1 className={`text-xl font-bold text-gray-800 flex items-center gap-2 dark:text-gray-100 ${!isExpanded ? 'justify-center' : ''}`}>
+          <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          {isExpanded && <span className="whitespace-nowrap overflow-hidden">AI Sandboxing Hub</span>}
         </h1>
       </div>
-      <nav className="flex-1 overflow-y-auto py-4">
+      <nav className="flex-1 overflow-y-auto py-4 overflow-x-hidden">
         {menuItems.map((item) => renderMenuItem(item))}
       </nav>
+      <div className={`px-2 py-3 border-t border-gray-200 dark:border-gray-700 flex ${isExpanded ? 'justify-between' : 'flex-col gap-2 items-center'}`}>
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-400"
+          title={isCollapsed ? 'Pin Sidebar' : 'Collapse Sidebar'}
+        >
+          {isCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </button>
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-400"
+          title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+        >
+          {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+        </button>
+      </div>
     </div>
   );
 }

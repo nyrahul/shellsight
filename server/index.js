@@ -2,8 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
-import { readdirSync, statSync, readFileSync, existsSync } from 'fs';
-import { spawn } from 'child_process';
+import { readdirSync, statSync, readFileSync, existsSync, openSync, readSync, closeSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as tar from 'tar';
@@ -21,24 +20,31 @@ app.use(express.json());
 // Base directory for script recordings (configurable via SSNREC env variable)
 const SSNREC_DIR = process.env.SSNREC || join(__dirname, '..', 'SSNREC');
 
+// Parse timing file into array of {delay, bytes} entries
+function parseTimingFile(timingPath) {
+  const content = readFileSync(timingPath, 'utf-8');
+  const lines = content.trim().split('\n');
+  const entries = [];
+
+  for (const line of lines) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const delay = parseFloat(parts[0]);
+      const bytes = parseInt(parts[1], 10);
+      if (!isNaN(delay) && !isNaN(bytes)) {
+        entries.push({ delay, bytes });
+      }
+    }
+  }
+
+  return entries;
+}
+
 // Calculate duration from timing file (sum of all delay values)
 function getRecordingDuration(timingPath) {
   try {
-    const content = readFileSync(timingPath, 'utf-8');
-    const lines = content.trim().split('\n');
-    let totalSeconds = 0;
-
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length >= 1) {
-        const delay = parseFloat(parts[0]);
-        if (!isNaN(delay)) {
-          totalSeconds += delay;
-        }
-      }
-    }
-
-    return totalSeconds;
+    const entries = parseTimingFile(timingPath);
+    return entries.reduce((sum, entry) => sum + entry.delay, 0);
   } catch (error) {
     return 0;
   }
@@ -123,11 +129,84 @@ app.get('/api/script-download/:folder', (req, res) => {
   }
 });
 
-// WebSocket connection for streaming scriptreplay output
+// Custom replay class that reads timing/typescript files directly
+class ScriptReplayer {
+  constructor(ws, timingPath, typescriptPath, initialSpeed = 1) {
+    this.ws = ws;
+    this.timingEntries = parseTimingFile(timingPath);
+    this.typescriptPath = typescriptPath;
+    this.speed = initialSpeed;
+    this.currentIndex = 0;
+    this.fileOffset = 0;
+    this.isRunning = false;
+    this.timeoutId = null;
+    this.fd = null;
+  }
+
+  start() {
+    if (this.isRunning) return;
+
+    this.isRunning = true;
+    this.fd = openSync(this.typescriptPath, 'r');
+    this.scheduleNext();
+  }
+
+  stop() {
+    this.isRunning = false;
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+    if (this.fd !== null) {
+      closeSync(this.fd);
+      this.fd = null;
+    }
+  }
+
+  scheduleNext() {
+    if (!this.isRunning || this.currentIndex >= this.timingEntries.length) {
+      // Replay finished
+      if (this.isRunning) {
+        this.ws.send(JSON.stringify({ type: 'end', code: 0 }));
+        this.stop();
+      }
+      return;
+    }
+
+    const entry = this.timingEntries[this.currentIndex];
+    const adjustedDelay = (entry.delay * 1000) / this.speed; // Convert to ms and apply speed
+
+    this.timeoutId = setTimeout(() => {
+      if (!this.isRunning) return;
+
+      // Read bytes from typescript file
+      const buffer = Buffer.alloc(entry.bytes);
+      try {
+        const bytesRead = readSync(this.fd, buffer, 0, entry.bytes, this.fileOffset);
+        this.fileOffset += bytesRead;
+
+        // Send data to client
+        if (bytesRead > 0) {
+          this.ws.send(JSON.stringify({
+            type: 'output',
+            data: buffer.slice(0, bytesRead).toString('utf-8')
+          }));
+        }
+      } catch (err) {
+        console.error('Error reading typescript file:', err);
+      }
+
+      this.currentIndex++;
+      this.scheduleNext();
+    }, adjustedDelay);
+  }
+}
+
+// WebSocket connection for streaming replay output
 wss.on('connection', (ws) => {
   console.log('WebSocket client connected');
 
-  let currentProcess = null;
+  let currentReplayer = null;
 
   ws.on('message', (message) => {
     try {
@@ -143,13 +222,14 @@ wss.on('connection', (ws) => {
           return;
         }
 
-        // Kill any existing process
-        if (currentProcess) {
-          currentProcess.kill();
+        // Stop any existing replay
+        if (currentReplayer) {
+          currentReplayer.stop();
         }
 
         const speed = data.speed || 1;
         const duration = getRecordingDuration(timingPath);
+
         ws.send(JSON.stringify({
           type: 'start',
           message: `Starting replay at ${speed}x speed...`,
@@ -157,43 +237,15 @@ wss.on('connection', (ws) => {
           speed
         }));
 
-        // Use scriptreplay command with --divisor for speed control
-        // scriptreplay --timing=timing --divisor=N typescript
-        const args = [
-          '--timing=' + timingPath,
-          typescriptPath
-        ];
-        if (speed > 1) {
-          args.unshift('--divisor=' + speed);
-        }
-
-        currentProcess = spawn('scriptreplay', args, {
-          env: { ...process.env, TERM: 'xterm-256color' }
-        });
-
-        currentProcess.stdout.on('data', (data) => {
-          ws.send(JSON.stringify({ type: 'output', data: data.toString() }));
-        });
-
-        currentProcess.stderr.on('data', (data) => {
-          ws.send(JSON.stringify({ type: 'output', data: data.toString() }));
-        });
-
-        currentProcess.on('close', (code) => {
-          ws.send(JSON.stringify({ type: 'end', code }));
-          currentProcess = null;
-        });
-
-        currentProcess.on('error', (error) => {
-          ws.send(JSON.stringify({ type: 'error', message: error.message }));
-          currentProcess = null;
-        });
+        // Create and start custom replayer
+        currentReplayer = new ScriptReplayer(ws, timingPath, typescriptPath, speed);
+        currentReplayer.start();
       }
 
       if (data.action === 'stop') {
-        if (currentProcess) {
-          currentProcess.kill();
-          currentProcess = null;
+        if (currentReplayer) {
+          currentReplayer.stop();
+          currentReplayer = null;
           ws.send(JSON.stringify({ type: 'stopped', message: 'Replay stopped' }));
         }
       }
@@ -203,8 +255,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    if (currentProcess) {
-      currentProcess.kill();
+    if (currentReplayer) {
+      currentReplayer.stop();
     }
     console.log('WebSocket client disconnected');
   });
