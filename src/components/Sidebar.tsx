@@ -13,7 +13,7 @@ import {
   BarChart3,
   Users,
   Plug,
-  Shield,
+  Eye,
   List,
   Sun,
   Moon,
@@ -152,8 +152,8 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
     >
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <h1 className={`text-xl font-bold text-gray-800 flex items-center gap-2 dark:text-gray-100 ${!isExpanded ? 'justify-center' : ''}`}>
-          <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-          {isExpanded && <span className="whitespace-nowrap overflow-hidden">AI Sandboxing Hub</span>}
+          <Eye className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          {isExpanded && <span className="whitespace-nowrap overflow-hidden">ShellSight</span>}
         </h1>
       </div>
       <nav className="flex-1 overflow-y-auto py-4 overflow-x-hidden">
