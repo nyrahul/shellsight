@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Terminal as TerminalIcon, Play, Square, RefreshCw, Download, List, Maximize2, Minimize2, PanelRightOpen, PanelRightClose, RotateCcw } from 'lucide-react';
+import { Terminal as TerminalIcon, Play, Square, RefreshCw, Download, List, Maximize2, Minimize2, PanelRightOpen, PanelRightClose, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown, Search, X } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -18,6 +18,9 @@ const WS_URL = `ws://${window.location.hostname}:3001`;
 
 const SPEED_OPTIONS = [1, 2, 4, 6, 8, 10, 12];
 
+type SortColumn = 'timestamp' | 'workloadName' | 'duration';
+type SortDirection = 'asc' | 'desc';
+
 export default function ShellReplayListPage() {
   const [recordings, setRecordings] = useState<ScriptRecording[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -30,6 +33,9 @@ export default function ShellReplayListPage() {
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [workloadFilter, setWorkloadFilter] = useState<string>('');
+  const [sortColumn, setSortColumn] = useState<SortColumn>('timestamp');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const wsRef = useRef<WebSocket | null>(null);
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -81,6 +87,45 @@ export default function ShellReplayListPage() {
       displayDuration: formatDuration(duration)
     };
   };
+
+  // Handle column sort
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('desc');
+    }
+  };
+
+  // Get sort icon for column header
+  const getSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-3 h-3 opacity-50" />;
+    }
+    return sortDirection === 'asc'
+      ? <ArrowUp className="w-3 h-3" />
+      : <ArrowDown className="w-3 h-3" />;
+  };
+
+  // Filter and sort recordings
+  const filteredAndSortedRecordings = recordings
+    .filter(r => !workloadFilter || r.workloadName.toLowerCase().includes(workloadFilter.toLowerCase()))
+    .sort((a, b) => {
+      let comparison = 0;
+      switch (sortColumn) {
+        case 'timestamp':
+          comparison = a.timestamp - b.timestamp;
+          break;
+        case 'workloadName':
+          comparison = a.workloadName.localeCompare(b.workloadName);
+          break;
+        case 'duration':
+          comparison = a.duration - b.duration;
+          break;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
 
   // Initialize xterm.js terminal
   useEffect(() => {
@@ -389,6 +434,24 @@ export default function ShellReplayListPage() {
           >
             <RefreshCw className="w-4 h-4" />
           </button>
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={workloadFilter}
+              onChange={(e) => setWorkloadFilter(e.target.value)}
+              placeholder="Filter workloads..."
+              className="pl-9 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400 w-48"
+            />
+            {workloadFilter && (
+              <button
+                onClick={() => setWorkloadFilter('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
           <select
             value={playbackSpeed}
             onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
@@ -419,7 +482,10 @@ export default function ShellReplayListPage() {
             <List className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             <span className="font-medium text-gray-700 dark:text-gray-200">Recordings</span>
             <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
-              {recordings.length} recording{recordings.length !== 1 ? 's' : ''}
+              {workloadFilter
+                ? `${filteredAndSortedRecordings.length} of ${recordings.length}`
+                : `${recordings.length} recording${recordings.length !== 1 ? 's' : ''}`
+              }
             </span>
             {isMinimized && (
               <button
@@ -445,14 +511,32 @@ export default function ShellReplayListPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 sticky top-0 dark:bg-gray-700">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                      Time
+                    <th
+                      onClick={() => handleSort('timestamp')}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Time
+                        {getSortIcon('timestamp')}
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                      Workload
+                    <th
+                      onClick={() => handleSort('workloadName')}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Workload
+                        {getSortIcon('workloadName')}
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                      Duration
+                    <th
+                      onClick={() => handleSort('duration')}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Duration
+                        {getSortIcon('duration')}
+                      </div>
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
                       Actions
@@ -460,7 +544,7 @@ export default function ShellReplayListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {recordings.map((recording) => (
+                  {filteredAndSortedRecordings.map((recording) => (
                     <tr
                       key={recording.name}
                       className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${playingRecording === recording.name ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}

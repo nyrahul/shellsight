@@ -84,7 +84,7 @@ const menuItems: MenuItem[] = [
 
 export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['inventory', 'monitor', 'execution']));
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
