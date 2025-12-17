@@ -129,6 +129,21 @@ app.get('/api/script-download/:folder', (req, res) => {
   }
 });
 
+// Find the offset after the "Script started on..." header line in typescript file
+function getTypescriptHeaderOffset(typescriptPath) {
+  try {
+    const content = readFileSync(typescriptPath);
+    // Find the first newline - header ends there
+    const newlineIndex = content.indexOf(0x0a); // '\n'
+    if (newlineIndex !== -1 && content.slice(0, 20).toString().startsWith('Script started')) {
+      return newlineIndex + 1; // Skip past the newline
+    }
+    return 0; // No header found, start from beginning
+  } catch (error) {
+    return 0;
+  }
+}
+
 // Custom replay class that reads timing/typescript files directly
 class ScriptReplayer {
   constructor(ws, timingPath, typescriptPath, initialSpeed = 1) {
@@ -137,7 +152,7 @@ class ScriptReplayer {
     this.typescriptPath = typescriptPath;
     this.speed = initialSpeed;
     this.currentIndex = 0;
-    this.fileOffset = 0;
+    this.fileOffset = getTypescriptHeaderOffset(typescriptPath); // Skip header
     this.isRunning = false;
     this.timeoutId = null;
     this.fd = null;
