@@ -12,6 +12,7 @@ import GeneratedArtifacts from './pages/GeneratedArtifacts';
 import OverallUsage from './pages/OverallUsage';
 import Users from './pages/Users';
 import Integrations from './pages/Integrations';
+import Settings from './pages/Settings';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('clusters');
@@ -42,6 +43,8 @@ function App() {
         return <Users />;
       case 'integrations':
         return <Integrations />;
+      case 'storage':
+        return <Settings />;
       default:
         return <Clusters />;
     }

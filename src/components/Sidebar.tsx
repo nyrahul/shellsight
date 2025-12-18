@@ -19,6 +19,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  HardDrive,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
@@ -78,6 +79,7 @@ const menuItems: MenuItem[] = [
     children: [
       { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
       { id: 'integrations', label: 'Integrations', icon: <Plug className="w-4 h-4" /> },
+      { id: 'storage', label: 'Storage', icon: <HardDrive className="w-4 h-4" /> },
     ],
   },
 ];
