@@ -1,5 +1,8 @@
 # ShellSight
 
+[![100% AI Generated](https://img.shields.io/badge/100%25-AI_Generated-blueviolet?style=flat-square)](https://claude.ai)
+[![Built with Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-orange?style=flat-square&logo=anthropic)](https://claude.ai/claude-code)
+
 A web-based dashboard for administrators to monitor shell access and audit user sessions through recorded shell session replay.
 
 ## Features

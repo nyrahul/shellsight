@@ -25,6 +25,13 @@ const S3_ENDPOINT = process.env.S3_ENDPOINT || ''; // Custom endpoint for S3-com
 const S3_PREFIX = process.env.S3_PREFIX || ''; // Optional prefix/folder in bucket
 const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || '';
 const S3_SECRET_KEY = process.env.S3_SECRET_KEY || '';
+const DEBUG = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+
+function debug(...args) {
+  if (DEBUG) {
+    console.log('[DEBUG]', ...args);
+  }
+}
 
 // Initialize S3 client
 const s3ClientConfig = {
@@ -127,15 +134,15 @@ async function listRecordingFolders() {
       ContinuationToken: continuationToken,
     });
 
-    console.log('S3 ListObjectsV2 request:', { bucket: S3_BUCKET, prefix: S3_PREFIX });
+    debug('S3 ListObjectsV2 request:', { bucket: S3_BUCKET, prefix: S3_PREFIX });
     const response = await s3Client.send(command);
-    console.log('S3 ListObjectsV2 response - keyCount:', response.KeyCount, 'keys:', response.Contents?.map(c => c.Key));
+    debug('S3 ListObjectsV2 response - keyCount:', response.KeyCount, 'keys:', response.Contents?.map(c => c.Key));
 
     if (response.Contents) {
       for (const obj of response.Contents) {
         // Extract folder name from key like "SSNREC/folder/timing"
         let key = obj.Key;
-        console.log('Processing key:', key);
+        debug('Processing key:', key);
 
         // Remove prefix (handle with or without trailing slash)
         if (S3_PREFIX) {
@@ -145,15 +152,15 @@ async function listRecordingFolders() {
           } else if (key.startsWith(S3_PREFIX)) {
             key = key.slice(S3_PREFIX.length);
           }
-          console.log('After prefix removal:', key);
+          debug('After prefix removal:', key);
         }
 
         // Remove leading slash if present
         key = key.replace(/^\//, '');
         const parts = key.split('/');
-        console.log('Parts:', parts, 'length:', parts.length);
+        debug('Parts:', parts, 'length:', parts.length);
         if (parts.length >= 2 && parts[0]) {
-          console.log('Adding folder:', parts[0]);
+          debug('Adding folder:', parts[0]);
           folders.add(parts[0]);
         }
       }
@@ -222,18 +229,18 @@ app.get('/api/debug-s3', async (req, res) => {
 // API to list all script folders from S3
 app.get('/api/script-folders', async (req, res) => {
   try {
-    console.log('Listing folders from S3 bucket:', S3_BUCKET);
-    console.log('S3 endpoint:', S3_ENDPOINT || 'default AWS');
-    console.log('S3 prefix:', S3_PREFIX || '(none)');
+    debug('Listing folders from S3 bucket:', S3_BUCKET);
+    debug('S3 endpoint:', S3_ENDPOINT || 'default AWS');
+    debug('S3 prefix:', S3_PREFIX || '(none)');
 
     const allFolders = await listRecordingFolders();
-    console.log('Found folders:', allFolders);
+    debug('Found folders:', allFolders);
 
     // Filter to only valid recordings and get their durations
     const validFolders = [];
     for (const folder of allFolders) {
       const isValid = await isValidRecording(folder);
-      console.log(`Folder ${folder} valid:`, isValid);
+      debug(`Folder ${folder} valid:`, isValid);
       if (isValid) {
         try {
           const timingKey = getS3Key(folder, 'timing');
@@ -246,7 +253,7 @@ app.get('/api/script-folders', async (req, res) => {
             duration,
           });
         } catch (err) {
-          console.error(`Error getting duration for ${folder}:`, err.message);
+          debug(`Error getting duration for ${folder}:`, err.message);
           // Still include the folder but with 0 duration
           validFolders.push({
             name: folder,
@@ -257,7 +264,7 @@ app.get('/api/script-folders', async (req, res) => {
       }
     }
 
-    console.log('Returning valid folders:', validFolders.length);
+    debug('Returning valid folders:', validFolders.length);
     res.json({ folders: validFolders });
   } catch (error) {
     console.error('Error listing folders from S3:', error);
@@ -483,5 +490,8 @@ server.listen(PORT, HOST, () => {
   }
   if (S3_PREFIX) {
     console.log(`Using S3 prefix: ${S3_PREFIX}`);
+  }
+  if (DEBUG) {
+    console.log('Debug logging enabled');
   }
 });
