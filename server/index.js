@@ -114,8 +114,12 @@ function parseTimingContent(content) {
 function getRecordingDurationFromContent(timingContent) {
   try {
     const entries = parseTimingContent(timingContent);
-    return entries.reduce((sum, entry) => sum + entry.delay, 0);
+    const duration = entries.reduce((sum, entry) => sum + entry.delay, 0);
+    debug('Timing entries count:', entries.length, 'Total duration:', duration);
+    debug('First 3 entries:', entries.slice(0, 3));
+    return duration;
   } catch (error) {
+    debug('Error parsing timing content:', error.message);
     return 0;
   }
 }
@@ -199,32 +203,6 @@ function getS3Key(folderName, fileName) {
   }
   return `${folderName}/${fileName}`;
 }
-
-// Debug endpoint to list raw S3 contents
-app.get('/api/debug-s3', async (req, res) => {
-  try {
-    const command = new ListObjectsV2Command({
-      Bucket: S3_BUCKET,
-      Prefix: S3_PREFIX,
-    });
-    const response = await s3Client.send(command);
-    res.json({
-      bucket: S3_BUCKET,
-      endpoint: S3_ENDPOINT,
-      prefix: S3_PREFIX,
-      keyCount: response.KeyCount,
-      contents: response.Contents || [],
-      commonPrefixes: response.CommonPrefixes || [],
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      name: error.name,
-      bucket: S3_BUCKET,
-      endpoint: S3_ENDPOINT,
-    });
-  }
-});
 
 // API to list all script folders from S3
 app.get('/api/script-folders', async (req, res) => {
@@ -344,6 +322,7 @@ function getTypescriptHeaderOffset(buffer) {
 }
 
 // Custom replay class that works with S3 data (pre-fetched into memory)
+// Batches small delays together to reduce overhead
 class ScriptReplayer {
   constructor(ws, timingContent, typescriptBuffer, initialSpeed = 1) {
     this.ws = ws;
@@ -354,6 +333,7 @@ class ScriptReplayer {
     this.fileOffset = getTypescriptHeaderOffset(typescriptBuffer); // Skip header
     this.isRunning = false;
     this.timeoutId = null;
+    this.minDelayMs = 10; // Batch entries with delays smaller than this
   }
 
   start() {
@@ -380,15 +360,39 @@ class ScriptReplayer {
       return;
     }
 
-    const entry = this.timingEntries[this.currentIndex];
-    const adjustedDelay = (entry.delay * 1000) / this.speed; // Convert to ms and apply speed
+    // Batch entries with small delays together
+    let totalDelay = 0;
+    let totalBytes = 0;
+    const startIndex = this.currentIndex;
+
+    while (this.currentIndex < this.timingEntries.length) {
+      const entry = this.timingEntries[this.currentIndex];
+      const delayMs = (entry.delay * 1000) / this.speed;
+
+      // If this is the first entry or delay is small, batch it
+      if (this.currentIndex === startIndex || delayMs < this.minDelayMs) {
+        totalDelay += entry.delay;
+        totalBytes += entry.bytes;
+        this.currentIndex++;
+
+        // If accumulated delay is significant, stop batching
+        if ((totalDelay * 1000) / this.speed >= this.minDelayMs) {
+          break;
+        }
+      } else {
+        // Significant delay, don't batch
+        break;
+      }
+    }
+
+    const adjustedDelay = (totalDelay * 1000) / this.speed;
 
     this.timeoutId = setTimeout(() => {
       if (!this.isRunning) return;
 
-      // Read bytes from typescript buffer
+      // Read batched bytes from typescript buffer
       try {
-        const endOffset = this.fileOffset + entry.bytes;
+        const endOffset = this.fileOffset + totalBytes;
         const data = this.typescriptBuffer.slice(this.fileOffset, endOffset);
         this.fileOffset = endOffset;
 
@@ -403,7 +407,6 @@ class ScriptReplayer {
         console.error('Error reading typescript buffer:', err);
       }
 
-      this.currentIndex++;
       this.scheduleNext();
     }, adjustedDelay);
   }
