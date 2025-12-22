@@ -7,10 +7,6 @@ import {
   ChevronRight,
   Package,
   Database,
-  FileText,
-  Terminal,
-  Cpu,
-  BarChart3,
   Users,
   Plug,
   Eye,
@@ -50,26 +46,7 @@ const menuItems: MenuItem[] = [
     label: 'Monitor',
     icon: <Activity className="w-5 h-5" />,
     children: [
-      {
-        id: 'execution',
-        label: 'Execution',
-        icon: <Terminal className="w-4 h-4" />,
-        children: [
-          { id: 'job-details', label: 'Job Details', icon: <FileText className="w-4 h-4" /> },
-          { id: 'shell-replay-list', label: 'Shell Replay List', icon: <List className="w-4 h-4" /> },
-          { id: 'execution-details', label: 'Execution Details', icon: <FileText className="w-4 h-4" /> },
-          { id: 'resource-usage', label: 'Resource Usage', icon: <Cpu className="w-4 h-4" /> },
-          { id: 'generated-artifacts', label: 'Generated Artifacts', icon: <Package className="w-4 h-4" /> },
-        ],
-      },
-      {
-        id: 'overall-usage',
-        label: 'Overall Usage',
-        icon: <BarChart3 className="w-4 h-4" />,
-        children: [
-          { id: 'resource-consumed', label: 'Resource Usage/Consumed', icon: <Cpu className="w-4 h-4" /> },
-        ],
-      },
+      { id: 'shell-replay-list', label: 'Shell Replay List', icon: <List className="w-4 h-4" /> },
     ],
   },
   {
@@ -85,7 +62,7 @@ const menuItems: MenuItem[] = [
 ];
 
 export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['inventory', 'monitor', 'execution']));
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['inventory', 'monitor']));
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const { theme, toggleTheme } = useTheme();

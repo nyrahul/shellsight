@@ -2,20 +2,13 @@ import { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Clusters from './pages/Clusters';
 import MCPServers from './pages/MCPServers';
-import JobDetails from './pages/JobDetails';
-import AppLogs from './pages/AppLogs';
-import ShellReplayPage from './pages/ShellReplay';
 import ShellReplayListPage from './pages/ShellReplayList';
-import ExecutionDetails from './pages/ExecutionDetails';
-import ResourceUsagePage from './pages/ResourceUsage';
-import GeneratedArtifacts from './pages/GeneratedArtifacts';
-import OverallUsage from './pages/OverallUsage';
 import Users from './pages/Users';
 import Integrations from './pages/Integrations';
 import Settings from './pages/Settings';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('clusters');
+  const [currentPage, setCurrentPage] = useState('shell-replay-list');
 
   const renderPage = () => {
     switch (currentPage) {
@@ -23,22 +16,8 @@ function App() {
         return <Clusters />;
       case 'mcp-servers':
         return <MCPServers />;
-      case 'job-details':
-        return <JobDetails />;
-      case 'app-logs':
-        return <AppLogs />;
-      case 'shell-replay':
-        return <ShellReplayPage />;
       case 'shell-replay-list':
         return <ShellReplayListPage />;
-      case 'execution-details':
-        return <ExecutionDetails />;
-      case 'resource-usage':
-        return <ResourceUsagePage />;
-      case 'generated-artifacts':
-        return <GeneratedArtifacts />;
-      case 'resource-consumed':
-        return <OverallUsage />;
       case 'users':
         return <Users />;
       case 'integrations':
@@ -46,7 +25,7 @@ function App() {
       case 'storage':
         return <Settings />;
       default:
-        return <Clusters />;
+        return <ShellReplayListPage />;
     }
   };
 
