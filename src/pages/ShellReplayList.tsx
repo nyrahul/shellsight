@@ -13,8 +13,11 @@ interface ScriptRecording {
   displayDuration: string;
 }
 
-const API_URL = `http://${window.location.hostname}:3001`;
-const WS_URL = `ws://${window.location.hostname}:3001`;
+// Use current origin in production (Docker), fallback to port 3001 for development
+const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '');
+const WS_URL = window.location.port === '5173'
+  ? `ws://${window.location.hostname}:3001`
+  : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 
 const SPEED_OPTIONS = [1, 2, 4, 6, 8, 10, 12];
 

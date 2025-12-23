@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+
+# Build output (will be generated in container)
+dist
+dist-ssr
+
+# Git
+.git
+.gitignore
+
+# IDE and editor configs
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Test files
+tests
+*.test.js
+*.spec.js
+coverage
+.nyc_output
+
+# Local shell recordings
+SSNREC
+
+# Documentation and misc
+*.md
+!README.md
+LICENSE
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude plans
+.claude

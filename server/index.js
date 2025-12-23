@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import session from 'express-session';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import { join, dirname } from 'path';
@@ -7,6 +8,15 @@ import { fileURLToPath } from 'url';
 import * as tar from 'tar';
 import { Readable } from 'stream';
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  passport,
+  AUTH_CONFIG,
+  setupOIDC,
+  generateToken,
+  requireAuth,
+  getAvailableProviders,
+  isAuthDisabled,
+} from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,8 +25,37 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(cors());
+// CORS configuration
+app.use(cors({
+  origin: AUTH_CONFIG.frontendUrl,
+  credentials: true,
+}));
 app.use(express.json());
+
+// Session configuration
+app.use(session({
+  secret: AUTH_CONFIG.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  },
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  const distPath = join(__dirname, '..', 'dist');
+  app.use(express.static(distPath));
+}
+
+// Setup OIDC (async)
+setupOIDC().catch(console.error);
 
 // S3 Configuration from environment variables
 const S3_BUCKET = process.env.S3_BUCKET || 'shellsight-recordings';
@@ -203,6 +242,90 @@ function getS3Key(folderName, fileName) {
   }
   return `${folderName}/${fileName}`;
 }
+
+// ============= Authentication Routes =============
+
+// Get auth status and available providers
+app.get('/auth/providers', (req, res) => {
+  res.json({
+    disabled: isAuthDisabled(),
+    providers: getAvailableProviders(),
+  });
+});
+
+// Get current user
+app.get('/auth/user', (req, res) => {
+  // If auth is disabled, return anonymous user
+  if (isAuthDisabled()) {
+    const anonymousUser = {
+      id: 'anonymous',
+      email: 'anonymous@localhost',
+      name: 'Anonymous User',
+      provider: 'none',
+    };
+    res.json({ user: anonymousUser, token: null, authDisabled: true });
+    return;
+  }
+
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    res.json({ user: req.user, token: generateToken(req.user) });
+  } else {
+    res.json({ user: null });
+  }
+});
+
+// Logout
+app.post('/auth/logout', (req, res) => {
+  req.logout((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Logout failed' });
+    }
+    req.session.destroy();
+    res.json({ success: true });
+  });
+});
+
+// Google OAuth
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+app.get('/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=google_failed` }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
+  }
+);
+
+// GitHub OAuth
+app.get('/auth/github', passport.authenticate('github', { scope: ['user:email'] }));
+app.get('/auth/github/callback',
+  passport.authenticate('github', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=github_failed` }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
+  }
+);
+
+// Microsoft OAuth
+app.get('/auth/microsoft', passport.authenticate('microsoft', { scope: ['user.read'] }));
+app.get('/auth/microsoft/callback',
+  passport.authenticate('microsoft', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=microsoft_failed` }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
+  }
+);
+
+// Generic OIDC
+app.get('/auth/oidc', passport.authenticate('oidc'));
+app.get('/auth/oidc/callback',
+  passport.authenticate('oidc', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=oidc_failed` }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
+  }
+);
+
+// ============= API Routes =============
 
 // API to list all script folders from S3
 app.get('/api/script-folders', async (req, res) => {
@@ -481,12 +604,20 @@ wss.on('connection', (ws) => {
   });
 });
 
+// Catch-all route for SPA (must be after all API routes)
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(join(__dirname, '..', 'dist', 'index.html'));
+  });
+}
+
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
 server.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
   console.log(`WebSocket server running on ws://${HOST}:${PORT}`);
+  console.log(`Frontend URL (CORS): ${AUTH_CONFIG.frontendUrl}`);
   console.log(`Reading recordings from S3 bucket: ${S3_BUCKET}`);
   if (S3_ENDPOINT) {
     console.log(`Using S3 endpoint: ${S3_ENDPOINT}`);
@@ -496,5 +627,11 @@ server.listen(PORT, HOST, () => {
   }
   if (DEBUG) {
     console.log('Debug logging enabled');
+  }
+  if (isAuthDisabled()) {
+    console.log('Authentication is DISABLED - running in anonymous mode');
+  } else {
+    const providers = getAvailableProviders();
+    console.log(`Authentication enabled with ${providers.length} provider(s): ${providers.map(p => p.name).join(', ') || 'none configured'}`);
   }
 });
