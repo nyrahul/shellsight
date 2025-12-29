@@ -65,7 +65,29 @@ The easiest way to deploy ShellSight to production is using Docker.
 - Docker 20.10+
 - Docker Compose v2+
 
-### Quick Start
+### Deploy from Release (Recommended)
+
+Download the latest release package and deploy with pre-built Docker images:
+
+```bash
+# Download the latest release
+wget https://github.com/<owner>/shellsight/releases/latest/download/shellsight-<version>.tar.gz
+
+# Extract
+tar -xzvf shellsight-<version>.tar.gz
+cd shellsight-<version>
+
+# Deploy
+./deploy.sh
+```
+
+The release package includes:
+- Pre-built Docker image (no build required)
+- nginx configuration
+- Deployment script with auto-generated secrets
+- Environment template
+
+### Build from Source
 
 ```bash
 # Clone the repository
@@ -291,6 +313,29 @@ npm run server
 - **Frontend**: React, TypeScript, Tailwind CSS, Vite, xterm.js
 - **Backend**: Express, WebSocket (ws)
 - **Icons**: Lucide React
+
+## Creating Releases
+
+Releases are automated via GitHub Actions. To create a new release:
+
+```bash
+# Create and push a version tag
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This will automatically:
+1. Build and push Docker image to GitHub Container Registry (`ghcr.io`)
+2. Create a deployment package with pre-configured docker-compose
+3. Create a GitHub Release with the deployment package
+
+### Docker Images
+
+Released images are available at:
+```
+ghcr.io/<owner>/shellsight:latest
+ghcr.io/<owner>/shellsight:v1.0.0
+```
 
 ## License
 
