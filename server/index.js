@@ -163,40 +163,42 @@ function getRecordingDurationFromContent(timingContent) {
   }
 }
 
-// List all recording folders from S3
-async function listRecordingFolders() {
+// Build S3 prefix for a user (bucket/prefix/userEmail/)
+function getUserS3Prefix(userEmail) {
+  const basePrefix = S3_PREFIX ? (S3_PREFIX.endsWith('/') ? S3_PREFIX : S3_PREFIX + '/') : '';
+  return `${basePrefix}${userEmail}/`;
+}
+
+// List all recording folders from S3 for a specific user
+async function listRecordingFolders(userEmail) {
   const folders = new Set();
   let continuationToken = undefined;
+  const userPrefix = getUserS3Prefix(userEmail);
 
   // List all objects and extract folder names from keys
   // This is more compatible with various S3-like implementations
   do {
     const command = new ListObjectsV2Command({
       Bucket: S3_BUCKET,
-      Prefix: S3_PREFIX,
+      Prefix: userPrefix,
       ContinuationToken: continuationToken,
     });
 
-    debug('S3 ListObjectsV2 request:', { bucket: S3_BUCKET, prefix: S3_PREFIX });
+    debug('S3 ListObjectsV2 request:', { bucket: S3_BUCKET, prefix: userPrefix, userEmail });
     const response = await s3Client.send(command);
     debug('S3 ListObjectsV2 response - keyCount:', response.KeyCount, 'keys:', response.Contents?.map(c => c.Key));
 
     if (response.Contents) {
       for (const obj of response.Contents) {
-        // Extract folder name from key like "SSNREC/folder/timing"
+        // Extract folder name from key like "SSNREC/user@email.com/folder/timing"
         let key = obj.Key;
         debug('Processing key:', key);
 
-        // Remove prefix (handle with or without trailing slash)
-        if (S3_PREFIX) {
-          const prefixWithSlash = S3_PREFIX.endsWith('/') ? S3_PREFIX : S3_PREFIX + '/';
-          if (key.startsWith(prefixWithSlash)) {
-            key = key.slice(prefixWithSlash.length);
-          } else if (key.startsWith(S3_PREFIX)) {
-            key = key.slice(S3_PREFIX.length);
-          }
-          debug('After prefix removal:', key);
+        // Remove user prefix
+        if (key.startsWith(userPrefix)) {
+          key = key.slice(userPrefix.length);
         }
+        debug('After prefix removal:', key);
 
         // Remove leading slash if present
         key = key.replace(/^\//, '');
@@ -216,9 +218,9 @@ async function listRecordingFolders() {
 }
 
 // Check if a recording folder has both timing and typescript files
-async function isValidRecording(folderName) {
-  const s3Prefix = S3_PREFIX ? (S3_PREFIX.endsWith('/') ? S3_PREFIX : S3_PREFIX + '/') : '';
-  const prefix = `${s3Prefix}${folderName}/`;
+async function isValidRecording(userEmail, folderName) {
+  const userPrefix = getUserS3Prefix(userEmail);
+  const prefix = `${userPrefix}${folderName}/`;
 
   const command = new ListObjectsV2Command({
     Bucket: S3_BUCKET,
@@ -234,13 +236,10 @@ async function isValidRecording(folderName) {
   return hasTimingFile && hasTypescriptFile;
 }
 
-// Get S3 key for a file in a recording folder
-function getS3Key(folderName, fileName) {
-  if (S3_PREFIX) {
-    const prefix = S3_PREFIX.endsWith('/') ? S3_PREFIX : S3_PREFIX + '/';
-    return `${prefix}${folderName}/${fileName}`;
-  }
-  return `${folderName}/${fileName}`;
+// Get S3 key for a file in a recording folder for a specific user
+function getS3Key(userEmail, folderName, fileName) {
+  const userPrefix = getUserS3Prefix(userEmail);
+  return `${userPrefix}${folderName}/${fileName}`;
 }
 
 // ============= Authentication Routes =============
@@ -327,24 +326,26 @@ app.get('/auth/oidc/callback',
 
 // ============= API Routes =============
 
-// API to list all script folders from S3
-app.get('/api/script-folders', async (req, res) => {
+// API to list all script folders from S3 for the logged-in user
+app.get('/api/script-folders', requireAuth, async (req, res) => {
   try {
+    const userEmail = req.user.email;
     debug('Listing folders from S3 bucket:', S3_BUCKET);
     debug('S3 endpoint:', S3_ENDPOINT || 'default AWS');
     debug('S3 prefix:', S3_PREFIX || '(none)');
+    debug('User email:', userEmail);
 
-    const allFolders = await listRecordingFolders();
+    const allFolders = await listRecordingFolders(userEmail);
     debug('Found folders:', allFolders);
 
     // Filter to only valid recordings and get their durations
     const validFolders = [];
     for (const folder of allFolders) {
-      const isValid = await isValidRecording(folder);
+      const isValid = await isValidRecording(userEmail, folder);
       debug(`Folder ${folder} valid:`, isValid);
       if (isValid) {
         try {
-          const timingKey = getS3Key(folder, 'timing');
+          const timingKey = getS3Key(userEmail, folder, 'timing');
           const timingContent = await getS3ObjectAsString(timingKey);
           const duration = getRecordingDurationFromContent(timingContent);
 
@@ -374,9 +375,10 @@ app.get('/api/script-folders', async (req, res) => {
 });
 
 // API to get script content (for reading typescript file) from S3
-app.get('/api/script-content/:folder', async (req, res) => {
+app.get('/api/script-content/:folder', requireAuth, async (req, res) => {
   try {
-    const typescriptKey = getS3Key(req.params.folder, 'typescript');
+    const userEmail = req.user.email;
+    const typescriptKey = getS3Key(userEmail, req.params.folder, 'typescript');
     const content = await getS3ObjectAsString(typescriptKey);
     res.json({ content });
   } catch (error) {
@@ -388,11 +390,12 @@ app.get('/api/script-content/:folder', async (req, res) => {
 });
 
 // API to download script recording as tgz from S3
-app.get('/api/script-download/:folder', async (req, res) => {
+app.get('/api/script-download/:folder', requireAuth, async (req, res) => {
   try {
+    const userEmail = req.user.email;
     const folderName = req.params.folder;
-    const timingKey = getS3Key(folderName, 'timing');
-    const typescriptKey = getS3Key(folderName, 'typescript');
+    const timingKey = getS3Key(userEmail, folderName, 'timing');
+    const typescriptKey = getS3Key(userEmail, folderName, 'typescript');
 
     // Get both files from S3
     const [timingBuffer, typescriptBuffer] = await Promise.all([
@@ -547,8 +550,15 @@ wss.on('connection', (ws) => {
 
       if (data.action === 'replay') {
         const folderName = data.folder;
-        const timingKey = getS3Key(folderName, 'timing');
-        const typescriptKey = getS3Key(folderName, 'typescript');
+        const userEmail = data.userEmail;
+
+        if (!userEmail) {
+          ws.send(JSON.stringify({ type: 'error', message: 'User email is required for replay' }));
+          return;
+        }
+
+        const timingKey = getS3Key(userEmail, folderName, 'timing');
+        const typescriptKey = getS3Key(userEmail, folderName, 'typescript');
 
         // Stop any existing replay
         if (currentReplayer) {

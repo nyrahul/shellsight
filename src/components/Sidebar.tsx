@@ -9,7 +9,6 @@ import {
   Database,
   Users,
   Plug,
-  Eye,
   List,
   Sun,
   Moon,
@@ -18,6 +17,7 @@ import {
   HardDrive,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import ShellSightIcon from './ShellSightIcon';
 
 interface MenuItem {
   id: string;
@@ -131,7 +131,7 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
     >
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <h1 className={`text-xl font-bold text-gray-800 flex items-center gap-2 dark:text-gray-100 ${!isExpanded ? 'justify-center' : ''}`}>
-          <Eye className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <ShellSightIcon className="w-7 h-7 flex-shrink-0" />
           {isExpanded && <span className="whitespace-nowrap overflow-hidden">ShellSight</span>}
         </h1>
       </div>

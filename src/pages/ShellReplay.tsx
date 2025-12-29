@@ -3,6 +3,7 @@ import { Terminal as TerminalIcon, Play, Square, RefreshCw, Download, Maximize2,
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useAuth } from '../context/AuthContext';
 
 interface ScriptFolder {
   name: string;
@@ -18,6 +19,7 @@ const WS_URL = window.location.port === '5173'
 const SPEED_OPTIONS = [1, 2, 4, 6, 8, 10];
 
 export default function ShellReplayPage() {
+  const { user } = useAuth();
   const [folders, setFolders] = useState<ScriptFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -293,7 +295,8 @@ export default function ShellReplayPage() {
     wsRef.current.send(JSON.stringify({
       action: 'replay',
       folder: selectedFolder,
-      speed: playbackSpeed
+      speed: playbackSpeed,
+      userEmail: user?.email
     }));
   };
 
@@ -446,7 +449,7 @@ export default function ShellReplayPage() {
 
         <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-2 text-gray-400 text-xs">
-            <span>user@sandbox:~$</span>
+            <span className="text-blue-400">{selectedFolder ? folders.find(f => f.name === selectedFolder)?.displayName.split('_')[0] || selectedFolder : 'No recording selected'}</span>
             {isPlaying && <span className="text-green-400 animate-pulse">▊</span>}
           </div>
           <div className="flex items-center gap-4 text-gray-500 text-xs">

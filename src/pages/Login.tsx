@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { Eye, Github, Chrome, Building2, Key } from 'lucide-react';
+import { Github, Chrome, Building2, Key } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import ShellSightIcon from '../components/ShellSightIcon';
 
 interface LoginProps {
   onLoginSuccess?: () => void;
@@ -55,7 +56,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <div className="flex flex-col items-center mb-8">
             <div className="flex items-center gap-3 mb-2">
-              <Eye className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+              <ShellSightIcon className="w-12 h-12" />
               <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">
                 ShellSight
               </h1>

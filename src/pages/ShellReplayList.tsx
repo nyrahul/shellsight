@@ -3,6 +3,7 @@ import { Terminal as TerminalIcon, Play, Square, RefreshCw, Download, List, Maxi
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useAuth } from '../context/AuthContext';
 
 interface ScriptRecording {
   name: string;
@@ -25,6 +26,7 @@ type SortColumn = 'timestamp' | 'workloadName' | 'duration';
 type SortDirection = 'asc' | 'desc';
 
 export default function ShellReplayListPage() {
+  const { user } = useAuth();
   const [recordings, setRecordings] = useState<ScriptRecording[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingRecording, setPlayingRecording] = useState<string>('');
@@ -389,7 +391,8 @@ export default function ShellReplayListPage() {
     wsRef.current.send(JSON.stringify({
       action: 'replay',
       folder: recordingName,
-      speed: playbackSpeed
+      speed: playbackSpeed,
+      userEmail: user?.email
     }));
   };
 
@@ -667,7 +670,7 @@ export default function ShellReplayListPage() {
 
           <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 flex items-center justify-between">
             <div className="flex items-center gap-2 text-gray-400 text-xs">
-              <span>user@sandbox:~$</span>
+              <span className="text-blue-400">{recordings.find(r => r.name === playingRecording)?.workloadName || 'No recording selected'}</span>
               {isPlaying && <span className="text-green-400 animate-pulse">▊</span>}
             </div>
             <div className="flex items-center gap-4 text-gray-500 text-xs">
