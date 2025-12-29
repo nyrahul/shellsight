@@ -70,14 +70,11 @@ The easiest way to deploy ShellSight to production is using Docker.
 Download the latest release package and deploy with pre-built Docker images:
 
 ```bash
-# Download the latest release
-wget https://github.com/<owner>/shellsight/releases/latest/download/shellsight-<version>.tar.gz
+# Download the latest release (use curl -LO to follow redirects)
+curl -LO https://github.com/<owner>/shellsight/releases/download/<version>/shellsight-<version>.tar.gz
 
-# Extract
+# Extract and deploy
 tar -xzvf shellsight-<version>.tar.gz
-cd shellsight-<version>
-
-# Deploy
 ./deploy.sh
 ```
 
