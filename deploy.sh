@@ -12,6 +12,8 @@ NC='\033[0m' # No Color
 INSTALL_RUSTFS=false
 UNINSTALL=false
 AUTO_YES=false
+CLI_ADMIN_USER=""
+CLI_ADMIN_PASSWORD=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -28,18 +30,28 @@ while [[ $# -gt 0 ]]; do
             AUTO_YES=true
             shift
             ;;
+        --admin-user)
+            CLI_ADMIN_USER="$2"
+            shift 2
+            ;;
+        --admin-password)
+            CLI_ADMIN_PASSWORD="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "ShellSight Deployment Script"
             echo ""
             echo "Usage: ./deploy.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --with-rustfs    Install RustFS (S3-compatible storage) alongside ShellSight"
-            echo "  --uninstall      Uninstall ShellSight and all components"
-            echo "  -y, --yes        Auto-answer yes to all prompts (for uninstall)"
-            echo "  -h, --help       Show this help message"
+            echo "  --with-rustfs          Install RustFS (S3-compatible storage) alongside ShellSight"
+            echo "  --uninstall            Uninstall ShellSight and all components"
+            echo "  -y, --yes              Auto-answer yes to all prompts (for uninstall)"
+            echo "  --admin-user USER      Set RustFS admin username (default: admin)"
+            echo "  --admin-password PASS  Set RustFS admin password (auto-generated if not provided)"
+            echo "  -h, --help             Show this help message"
             echo ""
-            echo "RustFS credentials (admin + S3 app user) are auto-generated during installation."
+            echo "RustFS credentials are auto-generated during installation unless specified via CLI."
             echo ""
             exit 0
             ;;
@@ -177,20 +189,27 @@ if [ "$INSTALL_RUSTFS" = true ]; then
     echo
     echo -e "${BLUE}Setting up RustFS...${NC}"
 
-    # Generate admin credentials for console login
-    RUSTFS_ADMIN_USER="admin"
-    if [ -z "$RUSTFS_ADMIN_PASSWORD" ]; then
+    # Use CLI admin credentials if provided, otherwise generate/use defaults
+    if [ -n "$CLI_ADMIN_USER" ]; then
+        RUSTFS_ADMIN_USER="$CLI_ADMIN_USER"
+    else
+        RUSTFS_ADMIN_USER="admin"
+    fi
+
+    if [ -n "$CLI_ADMIN_PASSWORD" ]; then
+        RUSTFS_ADMIN_PASSWORD="$CLI_ADMIN_PASSWORD"
+    elif [ -z "$RUSTFS_ADMIN_PASSWORD" ]; then
         RUSTFS_ADMIN_PASSWORD=$(openssl rand -base64 16 2>/dev/null | tr -d '/+=' | head -c 16)
         if [ -z "$RUSTFS_ADMIN_PASSWORD" ]; then
             RUSTFS_ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 16)
         fi
     fi
 
-    # Generate S3 app credentials (write-only access)
-    S3_APP_ACCESS_KEY=$(openssl rand -hex 10 2>/dev/null || head -c 20 /dev/urandom | base64 | tr -d '/+=' | head -c 20)
-    S3_APP_SECRET_KEY=$(openssl rand -hex 20 2>/dev/null || head -c 40 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+    # Use admin credentials for S3 access (simpler and more reliable)
+    S3_APP_ACCESS_KEY="$RUSTFS_ADMIN_USER"
+    S3_APP_SECRET_KEY="$RUSTFS_ADMIN_PASSWORD"
 
-    echo -e "${GREEN}✓ Generated RustFS admin and S3 app credentials${NC}"
+    echo -e "${GREEN}✓ RustFS admin credentials configured${NC}"
 fi
 
 # Check if .env file exists
@@ -255,8 +274,6 @@ if [ "$INSTALL_RUSTFS" = true ]; then
 # RustFS Configuration (auto-generated)
 RUSTFS_ADMIN_USER=$RUSTFS_ADMIN_USER
 RUSTFS_ADMIN_PASSWORD=$RUSTFS_ADMIN_PASSWORD
-S3_APP_ACCESS_KEY=$S3_APP_ACCESS_KEY
-S3_APP_SECRET_KEY=$S3_APP_SECRET_KEY
 EOF
     fi
 
@@ -285,7 +302,7 @@ services:
       retries: 10
       start_period: 10s
 
-  # Init container to create bucket and app user with read/write access
+  # Init container to create bucket
   rustfs-init:
     image: minio/mc:latest
     container_name: shellsight-rustfs-init
@@ -295,8 +312,6 @@ services:
     environment:
       RUSTFS_ADMIN_USER: ${RUSTFS_ADMIN_USER:-admin}
       RUSTFS_ADMIN_PASSWORD: ${RUSTFS_ADMIN_PASSWORD:-changeme}
-      S3_APP_ACCESS_KEY: ${S3_APP_ACCESS_KEY:-appuser}
-      S3_APP_SECRET_KEY: ${S3_APP_SECRET_KEY:-apppassword}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -306,13 +321,7 @@ services:
         # Create bucket
         mc mb rustfs/shellsight-recordings --ignore-existing
 
-        # Create app user with read/write access
-        mc admin user add rustfs $${S3_APP_ACCESS_KEY} $${S3_APP_SECRET_KEY} || true
-
-        # Attach built-in readwrite policy to user
-        mc admin policy attach rustfs readwrite --user $${S3_APP_ACCESS_KEY} || true
-
-        echo 'Bucket and app user created successfully'
+        echo 'Bucket created successfully'
     networks:
       - shellsight-network
 
@@ -360,12 +369,12 @@ if [ "$INSTALL_RUSTFS" = true ]; then
     echo -e "${BLUE}Admin Password:${NC}   $RUSTFS_ADMIN_PASSWORD"
     echo
     echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}  S3 App Credentials (write access)${NC}"
+    echo -e "${GREEN}  S3 Credentials${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo
     echo -e "${BLUE}S3 Endpoint:${NC}      http://localhost:9000"
-    echo -e "${BLUE}Access Key:${NC}       $S3_APP_ACCESS_KEY"
-    echo -e "${BLUE}Secret Key:${NC}       $S3_APP_SECRET_KEY"
+    echo -e "${BLUE}Access Key:${NC}       $RUSTFS_ADMIN_USER"
+    echo -e "${BLUE}Secret Key:${NC}       $RUSTFS_ADMIN_PASSWORD"
     echo -e "${BLUE}Bucket:${NC}           shellsight-recordings"
     echo
     echo -e "${YELLOW}IMPORTANT: Save these credentials! They are also stored in .env${NC}"
