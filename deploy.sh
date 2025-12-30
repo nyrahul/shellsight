@@ -222,19 +222,30 @@ if [ ! -f .env ]; then
     echo -e "${GREEN}✓ Created .env file with generated secrets${NC}"
 fi
 
-# Configure RustFS in .env if installing
+# Configure RustFS in .env if installing (only if not already configured)
 if [ "$INSTALL_RUSTFS" = true ]; then
-    # Update S3 settings for local RustFS (use app credentials, not admin)
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s|S3_ENDPOINT=.*|S3_ENDPOINT=http://rustfs:9000|" .env
-        sed -i '' "s|S3_ACCESS_KEY=.*|S3_ACCESS_KEY=$S3_APP_ACCESS_KEY|" .env
-        sed -i '' "s|S3_SECRET_KEY=.*|S3_SECRET_KEY=$S3_APP_SECRET_KEY|" .env
-        sed -i '' "s|S3_BUCKET=.*|S3_BUCKET=shellsight-recordings|" .env
+    # Check if S3 settings are already configured (not empty/placeholder values)
+    CURRENT_S3_ENDPOINT=$(grep "^S3_ENDPOINT=" .env | cut -d'=' -f2-)
+    CURRENT_S3_ACCESS_KEY=$(grep "^S3_ACCESS_KEY=" .env | cut -d'=' -f2-)
+
+    # Only update S3 settings if they're empty or have placeholder values
+    if [ -z "$CURRENT_S3_ENDPOINT" ] || [ "$CURRENT_S3_ENDPOINT" = "" ]; then
+        echo -e "${BLUE}Configuring S3 settings for local RustFS...${NC}"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|S3_ENDPOINT=.*|S3_ENDPOINT=http://rustfs:9000|" .env
+            sed -i '' "s|S3_ACCESS_KEY=.*|S3_ACCESS_KEY=$S3_APP_ACCESS_KEY|" .env
+            sed -i '' "s|S3_SECRET_KEY=.*|S3_SECRET_KEY=$S3_APP_SECRET_KEY|" .env
+            sed -i '' "s|S3_BUCKET=.*|S3_BUCKET=shellsight-recordings|" .env
+        else
+            sed -i "s|S3_ENDPOINT=.*|S3_ENDPOINT=http://rustfs:9000|" .env
+            sed -i "s|S3_ACCESS_KEY=.*|S3_ACCESS_KEY=$S3_APP_ACCESS_KEY|" .env
+            sed -i "s|S3_SECRET_KEY=.*|S3_SECRET_KEY=$S3_APP_SECRET_KEY|" .env
+            sed -i "s|S3_BUCKET=.*|S3_BUCKET=shellsight-recordings|" .env
+        fi
+        echo -e "${GREEN}✓ Configured S3 settings for local RustFS${NC}"
     else
-        sed -i "s|S3_ENDPOINT=.*|S3_ENDPOINT=http://rustfs:9000|" .env
-        sed -i "s|S3_ACCESS_KEY=.*|S3_ACCESS_KEY=$S3_APP_ACCESS_KEY|" .env
-        sed -i "s|S3_SECRET_KEY=.*|S3_SECRET_KEY=$S3_APP_SECRET_KEY|" .env
-        sed -i "s|S3_BUCKET=.*|S3_BUCKET=shellsight-recordings|" .env
+        echo -e "${YELLOW}S3 settings already configured, skipping RustFS S3 configuration${NC}"
+        echo -e "${YELLOW}  Current S3_ENDPOINT: $CURRENT_S3_ENDPOINT${NC}"
     fi
 
     # Add RustFS credentials to .env
@@ -248,8 +259,6 @@ S3_APP_ACCESS_KEY=$S3_APP_ACCESS_KEY
 S3_APP_SECRET_KEY=$S3_APP_SECRET_KEY
 EOF
     fi
-
-    echo -e "${GREEN}✓ Configured S3 settings for local RustFS${NC}"
 
     # Create docker-compose override for RustFS
     cat > docker-compose.rustfs.yml << 'EOF'
