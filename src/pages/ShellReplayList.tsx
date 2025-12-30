@@ -26,7 +26,7 @@ type SortColumn = 'timestamp' | 'workloadName' | 'duration';
 type SortDirection = 'asc' | 'desc';
 
 export default function ShellReplayListPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [recordings, setRecordings] = useState<ScriptRecording[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingRecording, setPlayingRecording] = useState<string>('');
@@ -181,7 +181,9 @@ export default function ShellReplayListPage() {
   // Fetch available script folders
   const fetchRecordings = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/script-folders`);
+      const response = await fetch(`${API_URL}/api/script-folders`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
       const data = await response.json();
       if (data.folders && data.folders.length > 0) {
         const parsed = data.folders
@@ -197,7 +199,7 @@ export default function ShellReplayListPage() {
     } catch (err) {
       setError('Failed to connect to server. Make sure the server is running.');
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     fetchRecordings();

@@ -19,7 +19,7 @@ const WS_URL = window.location.port === '5173'
 const SPEED_OPTIONS = [1, 2, 4, 6, 8, 10];
 
 export default function ShellReplayPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [folders, setFolders] = useState<ScriptFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -101,7 +101,9 @@ export default function ShellReplayPage() {
   // Fetch available script folders
   const fetchFolders = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/script-folders`);
+      const response = await fetch(`${API_URL}/api/script-folders`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
       const data = await response.json();
       if (data.folders && data.folders.length > 0) {
         setFolders(data.folders);
@@ -113,7 +115,7 @@ export default function ShellReplayPage() {
     } catch (err) {
       setError('Failed to connect to server. Make sure the server is running.');
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     fetchFolders();
