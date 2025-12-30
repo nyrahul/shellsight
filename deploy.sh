@@ -257,11 +257,11 @@ services:
     networks:
       - shellsight-network
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/minio/health/live || exit 1"]
-      interval: 30s
-      timeout: 20s
-      retries: 5
-      start_period: 30s
+      test: ["CMD-SHELL", "nc -z localhost 9000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # Init container to create bucket
   rustfs-init:
