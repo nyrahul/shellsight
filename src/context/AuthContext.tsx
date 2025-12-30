@@ -28,9 +28,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Use empty string for same-origin requests in production (Docker)
-// Fall back to localhost:3001 only if VITE_API_URL is not defined at all
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+// Use current origin in production (Docker), fallback to port 3001 for development
+const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '');
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
