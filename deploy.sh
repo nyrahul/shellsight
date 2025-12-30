@@ -258,7 +258,7 @@ services:
       retries: 10
       start_period: 10s
 
-  # Init container to create bucket and app user with write-only access
+  # Init container to create bucket and app user with read/write access
   rustfs-init:
     image: minio/mc:latest
     container_name: shellsight-rustfs-init
@@ -279,36 +279,11 @@ services:
         # Create bucket
         mc mb rustfs/shellsight-recordings --ignore-existing
 
-        # Create write-only policy for the bucket
-        cat > /tmp/writeonly-policy.json << 'POLICY'
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Action": [
-                "s3:PutObject",
-                "s3:GetObject",
-                "s3:ListBucket",
-                "s3:GetBucketLocation"
-              ],
-              "Resource": [
-                "arn:aws:s3:::shellsight-recordings",
-                "arn:aws:s3:::shellsight-recordings/*"
-              ]
-            }
-          ]
-        }
-        POLICY
-
-        # Create the policy
-        mc admin policy create rustfs shellsight-app-policy /tmp/writeonly-policy.json || true
-
-        # Create app user with limited access
+        # Create app user with read/write access
         mc admin user add rustfs $${S3_APP_ACCESS_KEY} $${S3_APP_SECRET_KEY} || true
 
-        # Attach policy to user
-        mc admin policy attach rustfs shellsight-app-policy --user $${S3_APP_ACCESS_KEY} || true
+        # Attach built-in readwrite policy to user
+        mc admin policy attach rustfs readwrite --user $${S3_APP_ACCESS_KEY} || true
 
         echo 'Bucket and app user created successfully'
     networks:
