@@ -359,19 +359,19 @@ jobs:
                 - "9000:9000"
                 - "9001:9001"
               environment:
-                - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-rustfsadmin}
-                - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-rustfsadmin}
-                - RUSTFS_CONSOLE_ENABLE=true
+                RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+                RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+                RUSTFS_CONSOLE_ENABLE: "true"
               volumes:
                 - rustfs-data:/data
-                - rustfs-logs:/logs
               networks:
                 - shellsight-network
               healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+                test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/minio/health/live || exit 1"]
                 interval: 30s
                 timeout: 20s
-                retries: 3
+                retries: 5
+                start_period: 30s
 
             rustfs-init:
               image: amazon/aws-cli:latest
@@ -380,15 +380,14 @@ jobs:
                 rustfs:
                   condition: service_healthy
               environment:
-                - AWS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY:-rustfsadmin}
-                - AWS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY:-rustfsadmin}
-                - AWS_DEFAULT_REGION=us-east-1
-              entrypoint: >
-                /bin/sh -c "
-                aws --endpoint-url http://rustfs:9000 s3 mb s3://shellsight-recordings --region us-east-1 || true;
-                echo 'Bucket created successfully';
-                exit 0;
-                "
+                AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+                AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+                AWS_DEFAULT_REGION: us-east-1
+              entrypoint: ["/bin/sh", "-c"]
+              command:
+                - |
+                  aws --endpoint-url http://rustfs:9000 s3 mb s3://shellsight-recordings --region us-east-1 || true
+                  echo 'Bucket created successfully'
               networks:
                 - shellsight-network
 
@@ -399,7 +398,6 @@ jobs:
 
           volumes:
             rustfs-data:
-            rustfs-logs:
           RUSTFS_EOF
 
               echo -e "${GREEN}✓ Created RustFS docker-compose override${NC}"

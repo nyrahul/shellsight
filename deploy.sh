@@ -249,37 +249,36 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-rustfsadmin}
-      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-rustfsadmin}
-      - RUSTFS_CONSOLE_ENABLE=true
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      RUSTFS_CONSOLE_ENABLE: "true"
     volumes:
       - rustfs-data:/data
-      - rustfs-logs:/logs
     networks:
       - shellsight-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/minio/health/live || exit 1"]
       interval: 30s
       timeout: 20s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
-  # Init container to create bucket using AWS CLI
+  # Init container to create bucket
   rustfs-init:
-    image: amazon/aws-cli:latest
+    image: minio/mc:latest
     container_name: shellsight-rustfs-init
     depends_on:
       rustfs:
         condition: service_healthy
     environment:
-      - AWS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY:-rustfsadmin}
-      - AWS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY:-rustfsadmin}
-      - AWS_DEFAULT_REGION=us-east-1
-    entrypoint: >
-      /bin/sh -c "
-      aws --endpoint-url http://rustfs:9000 s3 mb s3://shellsight-recordings --region us-east-1 || true;
-      echo 'Bucket created successfully';
-      exit 0;
-      "
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set rustfs http://rustfs:9000 $${RUSTFS_ACCESS_KEY} $${RUSTFS_SECRET_KEY}
+        mc mb rustfs/shellsight-recordings --ignore-existing
+        echo 'Bucket created successfully'
     networks:
       - shellsight-network
 
@@ -290,7 +289,6 @@ services:
 
 volumes:
   rustfs-data:
-  rustfs-logs:
 EOF
 
     echo -e "${GREEN}✓ Created RustFS docker-compose override${NC}"
