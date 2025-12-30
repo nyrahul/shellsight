@@ -266,11 +266,31 @@ app.get('/auth/user', (req, res) => {
     return;
   }
 
+  // Check Passport session first
   if (req.isAuthenticated && req.isAuthenticated()) {
     res.json({ user: req.user, token: generateToken(req.user) });
-  } else {
-    res.json({ user: null });
+    return;
   }
+
+  // Check JWT token in Authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    const decoded = verifyToken(token);
+    if (decoded) {
+      // Return the decoded user info from the token
+      const user = {
+        id: decoded.id,
+        email: decoded.email,
+        name: decoded.name,
+        provider: decoded.id.split(':')[0] || 'unknown',
+      };
+      res.json({ user });
+      return;
+    }
+  }
+
+  res.json({ user: null });
 });
 
 // Logout
