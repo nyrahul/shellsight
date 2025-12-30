@@ -13,6 +13,7 @@ import {
   AUTH_CONFIG,
   setupOIDC,
   generateToken,
+  verifyToken,
   requireAuth,
   getAvailableProviders,
   isAuthDisabled,
