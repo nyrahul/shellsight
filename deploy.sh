@@ -12,6 +12,7 @@ NC='\033[0m' # No Color
 INSTALL_RUSTFS=false
 RUSTFS_ACCESS_KEY=""
 RUSTFS_SECRET_KEY=""
+UNINSTALL=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -28,6 +29,10 @@ while [[ $# -gt 0 ]]; do
             RUSTFS_SECRET_KEY="$2"
             shift 2
             ;;
+        --uninstall)
+            UNINSTALL=true
+            shift
+            ;;
         -h|--help)
             echo "ShellSight Deployment Script"
             echo ""
@@ -37,6 +42,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --with-rustfs              Install RustFS (S3-compatible storage) alongside ShellSight"
             echo "  --rustfs-access-key KEY    Set RustFS access key (default: auto-generated)"
             echo "  --rustfs-secret-key KEY    Set RustFS secret key (default: auto-generated)"
+            echo "  --uninstall                Uninstall ShellSight and all components"
             echo "  -h, --help                 Show this help message"
             echo ""
             exit 0
@@ -48,6 +54,78 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Handle uninstall
+if [ "$UNINSTALL" = true ]; then
+    echo -e "${RED}========================================${NC}"
+    echo -e "${RED}  ShellSight Uninstall${NC}"
+    echo -e "${RED}========================================${NC}"
+    echo
+
+    # Check for docker-compose
+    if command -v docker-compose &> /dev/null; then
+        COMPOSE_CMD="docker-compose"
+    elif docker compose version &> /dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+    else
+        echo -e "${RED}Error: Docker Compose is not installed.${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}This will remove all ShellSight containers and networks.${NC}"
+    read -p "Are you sure you want to continue? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "Uninstall cancelled."
+        exit 0
+    fi
+
+    echo
+    echo -e "${BLUE}Stopping and removing containers...${NC}"
+
+    # Check if RustFS compose file exists
+    if [ -f docker-compose.rustfs.yml ]; then
+        $COMPOSE_CMD -f docker-compose.yml -f docker-compose.rustfs.yml down --remove-orphans 2>/dev/null || true
+    else
+        $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
+    fi
+
+    echo -e "${GREEN}✓ Containers and networks removed${NC}"
+
+    # Ask about volumes
+    echo
+    echo -e "${YELLOW}Do you want to remove Docker volumes (this will delete all data)?${NC}"
+    read -p "Remove volumes? [y/N]: " remove_volumes
+    if [[ "$remove_volumes" =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}Removing volumes...${NC}"
+        if [ -f docker-compose.rustfs.yml ]; then
+            $COMPOSE_CMD -f docker-compose.yml -f docker-compose.rustfs.yml down -v 2>/dev/null || true
+        else
+            $COMPOSE_CMD down -v 2>/dev/null || true
+        fi
+        # Also remove any orphaned shellsight volumes
+        docker volume rm shellsight_rustfs-data shellsight_rustfs-logs 2>/dev/null || true
+        docker volume rm rustfs-data rustfs-logs 2>/dev/null || true
+        echo -e "${GREEN}✓ Volumes removed${NC}"
+    fi
+
+    # Ask about config files
+    echo
+    echo -e "${YELLOW}Do you want to remove configuration files (.env, docker-compose.rustfs.yml)?${NC}"
+    read -p "Remove config files? [y/N]: " remove_config
+    if [[ "$remove_config" =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}Removing configuration files...${NC}"
+        rm -f .env docker-compose.rustfs.yml 2>/dev/null || true
+        echo -e "${GREEN}✓ Configuration files removed${NC}"
+    fi
+
+    echo
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  Uninstall Complete${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo
+    echo "ShellSight has been uninstalled."
+    exit 0
+fi
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  ShellSight Deployment Script${NC}"
