@@ -11,6 +11,7 @@ NC='\033[0m' # No Color
 # Default values
 INSTALL_RUSTFS=false
 UNINSTALL=false
+AUTO_YES=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -23,6 +24,10 @@ while [[ $# -gt 0 ]]; do
             UNINSTALL=true
             shift
             ;;
+        -y|--yes)
+            AUTO_YES=true
+            shift
+            ;;
         -h|--help)
             echo "ShellSight Deployment Script"
             echo ""
@@ -31,6 +36,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --with-rustfs    Install RustFS (S3-compatible storage) alongside ShellSight"
             echo "  --uninstall      Uninstall ShellSight and all components"
+            echo "  -y, --yes        Auto-answer yes to all prompts (for uninstall)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "RustFS credentials (admin + S3 app user) are auto-generated during installation."
@@ -63,7 +69,11 @@ if [ "$UNINSTALL" = true ]; then
     fi
 
     echo -e "${YELLOW}This will remove all ShellSight containers and networks.${NC}"
-    read -p "Are you sure you want to continue? [y/N]: " confirm
+    if [ "$AUTO_YES" = true ]; then
+        confirm="y"
+    else
+        read -p "Are you sure you want to continue? [y/N]: " confirm
+    fi
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo "Uninstall cancelled."
         exit 0
@@ -84,7 +94,11 @@ if [ "$UNINSTALL" = true ]; then
     # Ask about volumes
     echo
     echo -e "${YELLOW}Do you want to remove Docker volumes (this will delete all data)?${NC}"
-    read -p "Remove volumes? [y/N]: " remove_volumes
+    if [ "$AUTO_YES" = true ]; then
+        remove_volumes="y"
+    else
+        read -p "Remove volumes? [y/N]: " remove_volumes
+    fi
     if [[ "$remove_volumes" =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}Removing volumes...${NC}"
         if [ -f docker-compose.rustfs.yml ]; then
@@ -101,7 +115,11 @@ if [ "$UNINSTALL" = true ]; then
     # Ask about config files
     echo
     echo -e "${YELLOW}Do you want to remove configuration files (.env, docker-compose.rustfs.yml)?${NC}"
-    read -p "Remove config files? [y/N]: " remove_config
+    if [ "$AUTO_YES" = true ]; then
+        remove_config="y"
+    else
+        read -p "Remove config files? [y/N]: " remove_config
+    fi
     if [[ "$remove_config" =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}Removing configuration files...${NC}"
         rm -f .env docker-compose.rustfs.yml 2>/dev/null || true
