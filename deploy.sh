@@ -10,8 +10,8 @@ NC='\033[0m' # No Color
 
 # Default values
 INSTALL_RUSTFS=false
-RUSTFS_ADMIN_USER=""
-RUSTFS_ADMIN_PASSWORD=""
+RUSTFS_ACCESS_KEY=""
+RUSTFS_SECRET_KEY=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -20,12 +20,12 @@ while [[ $# -gt 0 ]]; do
             INSTALL_RUSTFS=true
             shift
             ;;
-        --rustfs-user)
-            RUSTFS_ADMIN_USER="$2"
+        --rustfs-access-key)
+            RUSTFS_ACCESS_KEY="$2"
             shift 2
             ;;
-        --rustfs-password)
-            RUSTFS_ADMIN_PASSWORD="$2"
+        --rustfs-secret-key)
+            RUSTFS_SECRET_KEY="$2"
             shift 2
             ;;
         -h|--help)
@@ -34,10 +34,10 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: ./deploy.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --with-rustfs          Install RustFS (S3-compatible storage) alongside ShellSight"
-            echo "  --rustfs-user USER     Set RustFS admin username (default: auto-generated)"
-            echo "  --rustfs-password PASS Set RustFS admin password (default: auto-generated)"
-            echo "  -h, --help             Show this help message"
+            echo "  --with-rustfs              Install RustFS (S3-compatible storage) alongside ShellSight"
+            echo "  --rustfs-access-key KEY    Set RustFS access key (default: auto-generated)"
+            echo "  --rustfs-secret-key KEY    Set RustFS secret key (default: auto-generated)"
+            echo "  -h, --help                 Show this help message"
             echo ""
             exit 0
             ;;
@@ -91,21 +91,15 @@ if [ "$INSTALL_RUSTFS" = true ]; then
     echo
     echo -e "${BLUE}Setting up RustFS...${NC}"
 
-    # Generate admin credentials if not provided
-    if [ -z "$RUSTFS_ADMIN_USER" ]; then
-        RUSTFS_ADMIN_USER="admin"
+    # Generate access key if not provided
+    if [ -z "$RUSTFS_ACCESS_KEY" ]; then
+        RUSTFS_ACCESS_KEY=$(openssl rand -hex 10 2>/dev/null || head -c 20 /dev/urandom | base64 | tr -d '/+=' | head -c 20)
     fi
 
-    if [ -z "$RUSTFS_ADMIN_PASSWORD" ]; then
-        RUSTFS_ADMIN_PASSWORD=$(openssl rand -base64 16 2>/dev/null | tr -d '/+=' | head -c 16)
-        if [ -z "$RUSTFS_ADMIN_PASSWORD" ]; then
-            RUSTFS_ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 16)
-        fi
+    # Generate secret key if not provided
+    if [ -z "$RUSTFS_SECRET_KEY" ]; then
+        RUSTFS_SECRET_KEY=$(openssl rand -hex 20 2>/dev/null || head -c 40 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
     fi
-
-    # Generate access keys for S3
-    RUSTFS_ACCESS_KEY=$(openssl rand -hex 10 2>/dev/null || head -c 20 /dev/urandom | base64 | tr -d '/+=' | head -c 20)
-    RUSTFS_SECRET_KEY=$(openssl rand -hex 20 2>/dev/null || head -c 40 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
 
     echo -e "${GREEN}✓ Generated RustFS credentials${NC}"
 fi
@@ -155,12 +149,10 @@ if [ "$INSTALL_RUSTFS" = true ]; then
     fi
 
     # Add RustFS credentials to .env
-    if ! grep -q "RUSTFS_ROOT_USER" .env; then
+    if ! grep -q "RUSTFS_ACCESS_KEY" .env; then
         cat >> .env << EOF
 
 # RustFS Configuration (auto-generated)
-RUSTFS_ROOT_USER=$RUSTFS_ADMIN_USER
-RUSTFS_ROOT_PASSWORD=$RUSTFS_ADMIN_PASSWORD
 RUSTFS_ACCESS_KEY=$RUSTFS_ACCESS_KEY
 RUSTFS_SECRET_KEY=$RUSTFS_SECRET_KEY
 EOF
@@ -172,45 +164,42 @@ EOF
     cat > docker-compose.rustfs.yml << 'EOF'
 services:
   rustfs:
-    image: minio/minio:latest
+    image: rustfs/rustfs:latest
     container_name: shellsight-rustfs
     restart: unless-stopped
     ports:
       - "9000:9000"
       - "9001:9001"
     environment:
-      - MINIO_ROOT_USER=${RUSTFS_ROOT_USER:-admin}
-      - MINIO_ROOT_PASSWORD=${RUSTFS_ROOT_PASSWORD:-changeme}
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-rustfsadmin}
+      - RUSTFS_CONSOLE_ENABLE=true
     volumes:
       - rustfs-data:/data
-    command: server /data --console-address ":9001"
+      - rustfs-logs:/logs
     networks:
       - shellsight-network
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
 
-  # Init container to create bucket
+  # Init container to create bucket using AWS CLI
   rustfs-init:
-    image: minio/mc:latest
+    image: amazon/aws-cli:latest
     container_name: shellsight-rustfs-init
     depends_on:
       rustfs:
         condition: service_healthy
     environment:
-      - MINIO_ROOT_USER=${RUSTFS_ROOT_USER:-admin}
-      - MINIO_ROOT_PASSWORD=${RUSTFS_ROOT_PASSWORD:-changeme}
-      - ACCESS_KEY=${RUSTFS_ACCESS_KEY:-minioaccess}
-      - SECRET_KEY=${RUSTFS_SECRET_KEY:-miniosecret}
+      - AWS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      - AWS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY:-rustfsadmin}
+      - AWS_DEFAULT_REGION=us-east-1
     entrypoint: >
       /bin/sh -c "
-      mc alias set myminio http://rustfs:9000 \$${MINIO_ROOT_USER} \$${MINIO_ROOT_PASSWORD};
-      mc mb myminio/shellsight-recordings --ignore-existing;
-      mc admin user add myminio \$${ACCESS_KEY} \$${SECRET_KEY};
-      mc admin policy attach myminio readwrite --user \$${ACCESS_KEY};
-      echo 'Bucket and user created successfully';
+      aws --endpoint-url http://rustfs:9000 s3 mb s3://shellsight-recordings --region us-east-1 || true;
+      echo 'Bucket created successfully';
       exit 0;
       "
     networks:
@@ -223,6 +212,7 @@ services:
 
 volumes:
   rustfs-data:
+  rustfs-logs:
 EOF
 
     echo -e "${GREEN}✓ Created RustFS docker-compose override${NC}"
@@ -256,12 +246,12 @@ if [ "$INSTALL_RUSTFS" = true ]; then
     echo -e "${GREEN}========================================${NC}"
     echo
     echo -e "${BLUE}Console URL:${NC}      http://localhost:9001"
-    echo -e "${BLUE}Admin Username:${NC}   $RUSTFS_ADMIN_USER"
-    echo -e "${BLUE}Admin Password:${NC}   $RUSTFS_ADMIN_PASSWORD"
+    echo -e "${BLUE}Console Username:${NC} $RUSTFS_ACCESS_KEY"
+    echo -e "${BLUE}Console Password:${NC} $RUSTFS_SECRET_KEY"
     echo
     echo -e "${BLUE}S3 Endpoint:${NC}      http://localhost:9000"
-    echo -e "${BLUE}Access Key:${NC}       $RUSTFS_ACCESS_KEY"
-    echo -e "${BLUE}Secret Key:${NC}       $RUSTFS_SECRET_KEY"
+    echo -e "${BLUE}S3 Access Key:${NC}    $RUSTFS_ACCESS_KEY"
+    echo -e "${BLUE}S3 Secret Key:${NC}    $RUSTFS_SECRET_KEY"
     echo -e "${BLUE}Bucket:${NC}           shellsight-recordings"
     echo
     echo -e "${YELLOW}IMPORTANT: Save these credentials! They are also stored in .env${NC}"
