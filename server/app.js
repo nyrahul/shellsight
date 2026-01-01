@@ -2,6 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import * as tar from 'tar';
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import {
@@ -19,9 +20,11 @@ const S3_BUCKET = process.env.S3_BUCKET || 'shellsight-recordings';
 const S3_REGION = process.env.S3_REGION || 'us-east-1';
 const S3_ENDPOINT = process.env.S3_ENDPOINT || '';
 const S3_PREFIX = process.env.S3_PREFIX || '';
-const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || '';
-const S3_SECRET_KEY = process.env.S3_SECRET_KEY || '';
 const DEBUG = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+
+// Storage config file path
+const CONFIG_DIR = process.env.CONFIG_DIR || join(process.cwd(), 'data');
+const STORAGE_CONFIG_FILE = join(CONFIG_DIR, 'storage-config.json');
 
 function debug(...args) {
   if (DEBUG) {
@@ -29,24 +32,86 @@ function debug(...args) {
   }
 }
 
-// Initialize S3 client
-const s3ClientConfig = {
-  region: S3_REGION,
-};
-
-if (S3_ACCESS_KEY && S3_SECRET_KEY) {
-  s3ClientConfig.credentials = {
-    accessKeyId: S3_ACCESS_KEY,
-    secretAccessKey: S3_SECRET_KEY,
+// Load stored credentials (file takes precedence over env vars)
+function loadStoredCredentials() {
+  try {
+    if (existsSync(STORAGE_CONFIG_FILE)) {
+      const data = JSON.parse(readFileSync(STORAGE_CONFIG_FILE, 'utf-8'));
+      return {
+        accessKey: data.s3AccessKey || '',
+        secretKey: data.s3SecretKey || '',
+      };
+    }
+  } catch (err) {
+    debug('Error loading stored credentials:', err.message);
+  }
+  // Fall back to environment variables
+  return {
+    accessKey: process.env.S3_ACCESS_KEY || '',
+    secretKey: process.env.S3_SECRET_KEY || '',
   };
 }
 
-if (S3_ENDPOINT) {
-  s3ClientConfig.endpoint = S3_ENDPOINT;
-  s3ClientConfig.forcePathStyle = true;
+// Save credentials to file
+function saveStoredCredentials(accessKey, secretKey) {
+  try {
+    if (!existsSync(CONFIG_DIR)) {
+      mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+
+    // Load existing config to preserve secret if not provided
+    let existingConfig = {};
+    if (existsSync(STORAGE_CONFIG_FILE)) {
+      existingConfig = JSON.parse(readFileSync(STORAGE_CONFIG_FILE, 'utf-8'));
+    }
+
+    const config = {
+      s3AccessKey: accessKey,
+      s3SecretKey: secretKey || existingConfig.s3SecretKey || '',
+      updatedAt: new Date().toISOString(),
+    };
+
+    writeFileSync(STORAGE_CONFIG_FILE, JSON.stringify(config, null, 2));
+    return true;
+  } catch (err) {
+    debug('Error saving credentials:', err.message);
+    return false;
+  }
 }
 
-const s3Client = new S3Client(s3ClientConfig);
+// Get current S3 credentials
+let currentCredentials = loadStoredCredentials();
+
+// Initialize S3 client
+function createS3Client() {
+  const config = {
+    region: S3_REGION,
+  };
+
+  const creds = loadStoredCredentials();
+  if (creds.accessKey && creds.secretKey) {
+    config.credentials = {
+      accessKeyId: creds.accessKey,
+      secretAccessKey: creds.secretKey,
+    };
+  }
+
+  if (S3_ENDPOINT) {
+    config.endpoint = S3_ENDPOINT;
+    config.forcePathStyle = true;
+  }
+
+  return new S3Client(config);
+}
+
+let s3Client = createS3Client();
+
+// Reinitialize S3 client with new credentials
+function reinitializeS3Client() {
+  currentCredentials = loadStoredCredentials();
+  s3Client = createS3Client();
+  debug('S3 client reinitialized');
+}
 
 // Get object from S3
 async function getS3Object(key) {
@@ -231,6 +296,52 @@ export function createApp(options = {}) {
   // Health check endpoint
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS' });
+  });
+
+  // Get storage configuration
+  app.get('/api/storage-config', (req, res) => {
+    const creds = loadStoredCredentials();
+    res.json({
+      s3Endpoint: S3_ENDPOINT,
+      s3Bucket: S3_BUCKET,
+      s3AccessKey: creds.accessKey,
+      // Never return the secret key
+      hasCredentials: !!(creds.accessKey && creds.secretKey),
+    });
+  });
+
+  // Save storage credentials
+  app.post('/api/storage-config', (req, res) => {
+    const { s3AccessKey, s3SecretKey } = req.body;
+
+    if (!s3AccessKey) {
+      return res.status(400).json({ error: 'Access key is required' });
+    }
+
+    // If secret key not provided, we keep the existing one
+    const success = saveStoredCredentials(s3AccessKey, s3SecretKey);
+
+    if (success) {
+      reinitializeS3Client();
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Failed to save credentials' });
+    }
+  });
+
+  // Test S3 connection
+  app.get('/api/storage-test', async (req, res) => {
+    try {
+      const command = new ListObjectsV2Command({
+        Bucket: S3_BUCKET,
+        MaxKeys: 1,
+      });
+      await s3Client.send(command);
+      res.json({ success: true, message: `Connected to bucket: ${S3_BUCKET}` });
+    } catch (error) {
+      debug('S3 connection test failed:', error.message);
+      res.status(400).json({ success: false, error: error.message });
+    }
   });
 
   return app;

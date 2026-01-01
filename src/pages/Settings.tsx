@@ -1,216 +1,249 @@
-import { useState, useRef } from 'react';
-import { HardDrive, Upload, Copy, Check, Save } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { HardDrive, Check, Save, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-interface SCPConfig {
-  username: string;
-  host: string;
-  port: number;
-  path: string;
+interface StorageConfig {
+  s3Endpoint: string;
+  s3Bucket: string;
+  s3AccessKey: string;
+  s3SecretKey: string;
+  hasCredentials: boolean;
 }
 
+const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '');
+
 export default function Settings() {
-  const [scpConfig, setScpConfig] = useState<SCPConfig>({
-    username: '',
-    host: '',
-    port: 22,
-    path: '/data/shellsight',
+  const { token } = useAuth();
+  const [config, setConfig] = useState<StorageConfig>({
+    s3Endpoint: '',
+    s3Bucket: '',
+    s3AccessKey: '',
+    s3SecretKey: '',
+    hasCredentials: false,
   });
-  const [publicKey, setPublicKey] = useState<string>('');
-  const [publicKeyFileName, setPublicKeyFileName] = useState<string>('');
+  const [accessKey, setAccessKey] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [showSecretKey, setShowSecretKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [saveError, setSaveError] = useState('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState('');
 
-  const handleConfigChange = (field: keyof SCPConfig, value: string | number) => {
-    setScpConfig(prev => ({ ...prev, [field]: value }));
-    setSaveSuccess(false);
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        setPublicKey(content.trim());
-        setPublicKeyFileName(file.name);
-        setSaveSuccess(false);
-      };
-      reader.readAsText(file);
-    }
-  };
+  // Fetch current storage configuration
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/storage-config`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setConfig(data);
+          if (data.s3AccessKey) {
+            setAccessKey(data.s3AccessKey);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch storage config:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchConfig();
+  }, [token]);
 
   const handleSave = async () => {
     setIsSaving(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsSaving(false);
-    setSaveSuccess(true);
-    // In production, this would save to the backend
-    console.log('Saving SCP config:', scpConfig);
-    console.log('Public key:', publicKey);
+    setSaveSuccess(false);
+    setSaveError('');
+
+    try {
+      const response = await fetch(`${API_URL}/api/storage-config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          s3AccessKey: accessKey,
+          s3SecretKey: secretKey,
+        }),
+      });
+
+      if (response.ok) {
+        setSaveSuccess(true);
+        setSecretKey(''); // Clear secret key after save
+        setConfig(prev => ({ ...prev, hasCredentials: true, s3AccessKey: accessKey }));
+      } else {
+        const data = await response.json();
+        setSaveError(data.error || 'Failed to save configuration');
+      }
+    } catch (err) {
+      setSaveError('Failed to connect to server');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const copyToClipboard = (text: string, commandId: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedCommand(commandId);
-    setTimeout(() => setCopiedCommand(null), 2000);
+  const handleTestConnection = async () => {
+    setTestStatus('testing');
+    setTestMessage('');
+
+    try {
+      const response = await fetch(`${API_URL}/api/storage-test`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setTestStatus('success');
+        setTestMessage(data.message || 'Connection successful');
+      } else {
+        setTestStatus('error');
+        setTestMessage(data.error || 'Connection failed');
+      }
+    } catch (err) {
+      setTestStatus('error');
+      setTestMessage('Failed to connect to server');
+    }
   };
 
-  const getScpConnectionString = () => {
-    const port = scpConfig.port !== 22 ? `:${scpConfig.port}` : '';
-    return `${scpConfig.username || '<USER>'}@${scpConfig.host || '<HOST>'}${port}:${scpConfig.path || '<PATH>'}`;
-  };
+  const isFormValid = accessKey.trim() !== '' && (secretKey.trim() !== '' || config.hasCredentials);
 
-  const isConfigValid = scpConfig.username && scpConfig.host && scpConfig.path;
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Configure system settings and storage options</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Storage Settings</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">Configure S3 storage for shell recordings</p>
         </div>
       </div>
 
-      {/* Onboarding Storage Section */}
+      {/* S3 Storage Configuration */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
             <HardDrive className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Onboarding Storage</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Configure SCP server for data transfer</p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">S3 Storage</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">S3-compatible storage for shell recordings</p>
           </div>
         </div>
 
-        {/* SCP Server Configuration */}
         <div className="space-y-6">
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">SCP Server Configuration</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  value={scpConfig.username}
-                  onChange={(e) => handleConfigChange('username', e.target.value)}
-                  placeholder="e.g., shellsight"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
-                />
+          {/* Read-only S3 Endpoint and Bucket */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                S3 Endpoint
+              </label>
+              <div className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300">
+                {config.s3Endpoint || <span className="text-gray-400 italic">Not configured (using AWS default)</span>}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Host / IP Address
-                </label>
-                <input
-                  type="text"
-                  value={scpConfig.host}
-                  onChange={(e) => handleConfigChange('host', e.target.value)}
-                  placeholder="e.g., 192.168.1.100 or storage.example.com"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Port
-                </label>
-                <input
-                  type="number"
-                  value={scpConfig.port}
-                  onChange={(e) => handleConfigChange('port', parseInt(e.target.value) || 22)}
-                  placeholder="22"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Remote Path
-                </label>
-                <input
-                  type="text"
-                  value={scpConfig.path}
-                  onChange={(e) => handleConfigChange('path', e.target.value)}
-                  placeholder="e.g., /data/shellsight"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
-                />
-              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Configured via S3_ENDPOINT environment variable
+              </p>
             </div>
-
-            {/* Connection String Preview */}
-            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500 dark:text-gray-400">SCP Connection String:</span>
-                <button
-                  onClick={() => copyToClipboard(getScpConnectionString(), 'connection')}
-                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-1"
-                  title="Copy to clipboard"
-                >
-                  {copiedCommand === 'connection' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </button>
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                S3 Bucket
+              </label>
+              <div className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300">
+                {config.s3Bucket || <span className="text-gray-400 italic">Not configured</span>}
               </div>
-              <code className="text-sm font-mono text-gray-800 dark:text-gray-200 mt-1 block">
-                scp &lt;file&gt; {getScpConnectionString()}
-              </code>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Configured via S3_BUCKET environment variable
+              </p>
             </div>
           </div>
 
-          {/* Public Key Upload */}
+          {/* Editable Access Key and Secret Key */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Upload className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Upload Public Key</h3>
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">S3 Credentials</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Access Key
+                </label>
+                <input
+                  type="text"
+                  value={accessKey}
+                  onChange={(e) => {
+                    setAccessKey(e.target.value);
+                    setSaveSuccess(false);
+                    setSaveError('');
+                  }}
+                  placeholder="Enter S3 Access Key"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Secret Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSecretKey ? 'text' : 'password'}
+                    value={secretKey}
+                    onChange={(e) => {
+                      setSecretKey(e.target.value);
+                      setSaveSuccess(false);
+                      setSaveError('');
+                    }}
+                    placeholder={config.hasCredentials ? '••••••••••••••••' : 'Enter S3 Secret Key'}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecretKey(!showSecretKey)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    {showSecretKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {config.hasCredentials && (
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                    Leave blank to keep existing secret key
+                  </p>
+                )}
+              </div>
             </div>
+          </div>
 
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Upload the generated public key file (<code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">~/.ssh/shellsight_key.pub</code>) for reference and verification.
-            </p>
-
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept=".pub,text/plain"
-              className="hidden"
-            />
-
+          {/* Test Connection */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
+                onClick={handleTestConnection}
+                disabled={testStatus === 'testing'}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300 disabled:opacity-50"
               >
-                <Upload className="w-4 h-4" />
-                {publicKeyFileName ? 'Change File' : 'Upload Public Key'}
+                <RefreshCw className={`w-4 h-4 ${testStatus === 'testing' ? 'animate-spin' : ''}`} />
+                Test Connection
               </button>
-              {publicKeyFileName && (
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  <Check className="w-4 h-4 inline text-green-500 mr-1" />
-                  {publicKeyFileName}
+              {testStatus === 'success' && (
+                <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <Check className="w-4 h-4" />
+                  {testMessage}
+                </span>
+              )}
+              {testStatus === 'error' && (
+                <span className="text-sm text-red-600 dark:text-red-400">
+                  {testMessage}
                 </span>
               )}
             </div>
-
-            {publicKey && (
-              <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Public Key Content:</span>
-                  <button
-                    onClick={() => copyToClipboard(publicKey, 'pubkey')}
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-1"
-                    title="Copy public key"
-                  >
-                    {copiedCommand === 'pubkey' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-                <pre className="text-xs font-mono text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap break-all bg-gray-100 dark:bg-gray-800 p-2 rounded">
-                  {publicKey}
-                </pre>
-              </div>
-            )}
           </div>
 
           {/* Save Button */}
@@ -219,13 +252,18 @@ export default function Settings() {
               {saveSuccess && (
                 <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
                   <Check className="w-4 h-4" />
-                  Settings saved successfully
+                  Credentials saved successfully
+                </span>
+              )}
+              {saveError && (
+                <span className="text-sm text-red-600 dark:text-red-400">
+                  {saveError}
                 </span>
               )}
             </div>
             <button
               onClick={handleSave}
-              disabled={!isConfigValid || isSaving}
+              disabled={!isFormValid || isSaving}
               className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? (
@@ -236,7 +274,7 @@ export default function Settings() {
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  Save Configuration
+                  Save Credentials
                 </>
               )}
             </button>
