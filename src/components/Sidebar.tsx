@@ -1,12 +1,9 @@
 import { useState } from 'react';
 import {
-  Server,
   Activity,
   Settings,
   ChevronDown,
   ChevronRight,
-  Package,
-  Database,
   Users,
   Plug,
   List,
@@ -15,6 +12,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   HardDrive,
+  PlusCircle,
+  Monitor,
+  Box,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import ShellSightIcon from './ShellSightIcon';
@@ -33,12 +33,12 @@ interface SidebarProps {
 
 const menuItems: MenuItem[] = [
   {
-    id: 'inventory',
-    label: 'Inventory',
-    icon: <Package className="w-5 h-5" />,
+    id: 'onboard',
+    label: 'Onboard',
+    icon: <PlusCircle className="w-5 h-5" />,
     children: [
-      { id: 'clusters', label: 'Clusters', icon: <Server className="w-4 h-4" /> },
-      { id: 'mcp-servers', label: 'MCP Servers', icon: <Database className="w-4 h-4" /> },
+      { id: 'onboard-vm', label: 'VM', icon: <Monitor className="w-4 h-4" /> },
+      { id: 'onboard-k8s', label: 'K8s', icon: <Box className="w-4 h-4" /> },
     ],
   },
   {
@@ -62,7 +62,7 @@ const menuItems: MenuItem[] = [
 ];
 
 export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['inventory', 'monitor']));
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['onboard', 'monitor']));
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const { theme, toggleTheme } = useTheme();
