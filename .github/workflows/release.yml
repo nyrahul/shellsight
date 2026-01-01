@@ -520,9 +520,21 @@ jobs:
                 - |
                   mc alias set rustfs http://rustfs:9000 $${RUSTFS_ADMIN_USER} $${RUSTFS_ADMIN_PASSWORD}
                   mc mb rustfs/shellsight-recordings --ignore-existing
-                  mc admin user add rustfs $${S3_ACCESS_KEY} $${S3_SECRET_KEY} || true
-                  mc admin policy attach rustfs readwrite --user $${S3_ACCESS_KEY} || true
-                  echo 'Bucket and user created'
+                  cat > /tmp/writeonly-policy.json << 'POLICY'
+                  {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                      {
+                        "Effect": "Allow",
+                        "Action": ["s3:PutObject", "s3:DeleteObject", "s3:GetBucketLocation"],
+                        "Resource": ["arn:aws:s3:::shellsight-recordings", "arn:aws:s3:::shellsight-recordings/*"]
+                      }
+                    ]
+                  }
+                  POLICY
+                  mc admin policy create rustfs writeonly /tmp/writeonly-policy.json || true
+                  mc admin user svcacct add rustfs $${RUSTFS_ADMIN_USER} --access-key $${S3_ACCESS_KEY} --secret-key $${S3_SECRET_KEY} --policy /tmp/writeonly-policy.json || true
+                  echo 'Bucket and write-only access key created'
 
           volumes:
             rustfs-data:
