@@ -6,7 +6,6 @@ interface StorageConfig {
   s3Endpoint: string;
   s3Bucket: string;
   s3AccessKey: string;
-  s3SecretKey: string;
   hasCredentials: boolean;
 }
 
@@ -18,9 +17,10 @@ export default function Settings() {
     s3Endpoint: '',
     s3Bucket: '',
     s3AccessKey: '',
-    s3SecretKey: '',
     hasCredentials: false,
   });
+  const [endpoint, setEndpoint] = useState('');
+  const [bucket, setBucket] = useState('');
   const [accessKey, setAccessKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [showSecretKey, setShowSecretKey] = useState(false);
@@ -41,9 +41,9 @@ export default function Settings() {
         if (response.ok) {
           const data = await response.json();
           setConfig(data);
-          if (data.s3AccessKey) {
-            setAccessKey(data.s3AccessKey);
-          }
+          setEndpoint(data.s3Endpoint || '');
+          setBucket(data.s3Bucket || '');
+          setAccessKey(data.s3AccessKey || '');
         }
       } catch (err) {
         console.error('Failed to fetch storage config:', err);
@@ -67,6 +67,8 @@ export default function Settings() {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
+          s3Endpoint: endpoint,
+          s3Bucket: bucket,
           s3AccessKey: accessKey,
           s3SecretKey: secretKey,
         }),
@@ -75,7 +77,13 @@ export default function Settings() {
       if (response.ok) {
         setSaveSuccess(true);
         setSecretKey(''); // Clear secret key after save
-        setConfig(prev => ({ ...prev, hasCredentials: true, s3AccessKey: accessKey }));
+        setConfig(prev => ({
+          ...prev,
+          hasCredentials: true,
+          s3AccessKey: accessKey,
+          s3Endpoint: endpoint,
+          s3Bucket: bucket,
+        }));
       } else {
         const data = await response.json();
         setSaveError(data.error || 'Failed to save configuration');
@@ -110,7 +118,7 @@ export default function Settings() {
     }
   };
 
-  const isFormValid = accessKey.trim() !== '' && (secretKey.trim() !== '' || config.hasCredentials);
+  const isFormValid = bucket.trim() !== '' && accessKey.trim() !== '' && (secretKey.trim() !== '' || config.hasCredentials);
 
   if (isLoading) {
     return (
@@ -142,39 +150,52 @@ export default function Settings() {
         </div>
 
         <div className="space-y-6">
-          {/* Read-only S3 Endpoint and Bucket */}
+          {/* S3 Endpoint and Bucket */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                 S3 Endpoint
               </label>
-              <div className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300">
-                {config.s3Endpoint || <span className="text-gray-400 italic">Not configured (using AWS default)</span>}
-              </div>
+              <input
+                type="text"
+                value={endpoint}
+                onChange={(e) => {
+                  setEndpoint(e.target.value);
+                  setSaveSuccess(false);
+                  setSaveError('');
+                }}
+                placeholder="e.g., http://localhost:9000 (leave empty for AWS)"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+              />
               <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                Configured via S3_ENDPOINT environment variable
+                Leave empty for AWS S3, or enter custom endpoint for MinIO/RustFS
               </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                S3 Bucket
+                S3 Bucket <span className="text-red-500">*</span>
               </label>
-              <div className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300">
-                {config.s3Bucket || <span className="text-gray-400 italic">Not configured</span>}
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                Configured via S3_BUCKET environment variable
-              </p>
+              <input
+                type="text"
+                value={bucket}
+                onChange={(e) => {
+                  setBucket(e.target.value);
+                  setSaveSuccess(false);
+                  setSaveError('');
+                }}
+                placeholder="e.g., shellsight-recordings"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+              />
             </div>
           </div>
 
-          {/* Editable Access Key and Secret Key */}
+          {/* S3 Credentials */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">S3 Credentials</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Access Key
+                  Access Key <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -190,7 +211,7 @@ export default function Settings() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Secret Key
+                  Secret Key <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
