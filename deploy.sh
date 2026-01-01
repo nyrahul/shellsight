@@ -76,10 +76,10 @@ if [ "$UNINSTALL" = true ]; then
     fi
 
     echo
-    echo -e "${BLUE}Stopping and removing containers...${NC}"
-    $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
+    echo -e "${BLUE}Stopping and removing ShellSight containers...${NC}"
+    $COMPOSE_CMD down 2>/dev/null || true
 
-    echo -e "${GREEN}✓ Containers and networks removed${NC}"
+    echo -e "${GREEN}✓ ShellSight containers removed${NC}"
 
     # Ask about volumes
     echo

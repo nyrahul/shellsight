@@ -205,9 +205,9 @@ jobs:
               fi
 
               echo
-              echo -e "${BLUE}Stopping and removing containers...${NC}"
-              $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
-              echo -e "${GREEN}✓ Containers and networks removed${NC}"
+              echo -e "${BLUE}Stopping and removing ShellSight containers...${NC}"
+              $COMPOSE_CMD down 2>/dev/null || true
+              echo -e "${GREEN}✓ ShellSight containers removed${NC}"
 
               echo
               echo -e "${YELLOW}Do you want to remove Docker volumes (this will delete all data)?${NC}"
