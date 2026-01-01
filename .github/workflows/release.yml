@@ -570,8 +570,8 @@ jobs:
 
             ```bash
             # Download and extract
-            gh release download ${{ steps.version.outputs.VERSION }} -p "*.tar.gz"
-            mkdir shellsight && tar -xzvf shellsight*.tar.gz -C shellsight
+            curl -L -o shellsight.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/shellsight-${{ steps.version.outputs.VERSION }}.tar.gz"
+            mkdir shellsight && tar -xzvf shellsight.tar.gz -C shellsight
             cd shellsight
 
             # Configure S3 settings in .env, then deploy
