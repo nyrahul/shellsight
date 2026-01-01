@@ -1,8 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Monitor, Copy, Check, Terminal, Trash2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+
+const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '');
 
 export default function OnboardVM() {
+  const { user, token } = useAuth();
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const [s3Config, setS3Config] = useState<{ endpoint: string; bucket: string }>({ endpoint: '', bucket: '' });
+
+  useEffect(() => {
+    const fetchS3Config = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/health`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setS3Config({
+            endpoint: data.endpoint || '',
+            bucket: data.bucket || '',
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch S3 config:', err);
+      }
+    };
+    fetchS3Config();
+  }, [token]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -10,10 +35,14 @@ export default function OnboardVM() {
     setTimeout(() => setCopiedCommand(null), 2000);
   };
 
+  const userEmail = user?.email || '[USER-EMAIL]';
+  const s3Endpoint = s3Config.endpoint || '[S3_ENDPOINT]';
+  const s3Bucket = s3Config.bucket || '[S3_BUCKET]';
+
   const onboardCommand = `curl -sSL https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ssh-ssnrec/install-recorded-shell.sh | \\
-   sudo USER_EMAIL=[USER-EMAIL] \\
-   S3_ENDPOINT=[S3_ENDPOINT] \\
-   S3_BUCKET=[S3_BUCKET] \\
+   sudo USER_EMAIL=${userEmail} \\
+   S3_ENDPOINT=${s3Endpoint} \\
+   S3_BUCKET=${s3Bucket} \\
    S3_ACCESS_KEY=[S3_ACCESS_KEY] \\
    S3_SECRET_KEY=[S3_SECRET_KEY] \\
    bash`;
