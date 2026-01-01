@@ -274,6 +274,15 @@ export default function ShellReplayPage() {
     wsRef.current = ws;
   }, []);
 
+  // Refresh both folders and connection status
+  const handleRefresh = useCallback(() => {
+    fetchFolders();
+    // Reconnect WebSocket if not connected
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      connectWebSocket();
+    }
+  }, [fetchFolders, connectWebSocket]);
+
   useEffect(() => {
     connectWebSocket();
     return () => {
@@ -330,9 +339,9 @@ export default function ShellReplayPage() {
             </span>
           </div>
           <button
-            onClick={fetchFolders}
+            onClick={handleRefresh}
             className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Refresh folder list"
+            title="Refresh folder list and connection"
           >
             <RefreshCw className="w-4 h-4" />
           </button>

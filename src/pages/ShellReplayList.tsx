@@ -369,6 +369,15 @@ export default function ShellReplayListPage() {
     wsRef.current = ws;
   }, []);
 
+  // Refresh both recordings and connection status
+  const handleRefresh = useCallback(() => {
+    fetchRecordings();
+    // Reconnect WebSocket if not connected
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      connectWebSocket();
+    }
+  }, [fetchRecordings, connectWebSocket]);
+
   useEffect(() => {
     connectWebSocket();
     return () => {
@@ -436,9 +445,9 @@ export default function ShellReplayListPage() {
             </span>
           </div>
           <button
-            onClick={fetchRecordings}
+            onClick={handleRefresh}
             className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-400 dark:hover:bg-gray-700"
-            title="Refresh recording list"
+            title="Refresh recording list and connection"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
