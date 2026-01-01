@@ -332,8 +332,6 @@ jobs:
           AUTO_YES=false
           CLI_ADMIN_USER=""
           CLI_ADMIN_PASSWORD=""
-          CLI_ACCESS_KEY=""
-          CLI_SECRET_KEY=""
 
           while [[ $# -gt 0 ]]; do
               case $1 in
@@ -353,14 +351,6 @@ jobs:
                       CLI_ADMIN_PASSWORD="$2"
                       shift 2
                       ;;
-                  --access-key)
-                      CLI_ACCESS_KEY="$2"
-                      shift 2
-                      ;;
-                  --secret-key)
-                      CLI_SECRET_KEY="$2"
-                      shift 2
-                      ;;
                   -h|--help)
                       echo "RustFS Deployment Script"
                       echo ""
@@ -371,9 +361,9 @@ jobs:
                       echo "  -y, --yes              Auto-answer yes to all prompts"
                       echo "  --admin-user USER      Set admin username (default: admin)"
                       echo "  --admin-password PASS  Set admin password (auto-generated)"
-                      echo "  --access-key KEY       Set S3 access key (auto-generated)"
-                      echo "  --secret-key SECRET    Set S3 secret key (auto-generated)"
                       echo "  -h, --help             Show this help message"
+                      echo ""
+                      echo "After installation, create an Access Key in the RustFS console."
                       echo ""
                       exit 0
                       ;;
@@ -463,23 +453,9 @@ jobs:
               RUSTFS_ADMIN_PASSWORD=$(openssl rand -base64 16 2>/dev/null | tr -d '/+=' | head -c 16)
           fi
 
-          if [ -n "$CLI_ACCESS_KEY" ]; then
-              S3_ACCESS_KEY="$CLI_ACCESS_KEY"
-          else
-              S3_ACCESS_KEY=$(openssl rand -hex 10 2>/dev/null)
-          fi
-
-          if [ -n "$CLI_SECRET_KEY" ]; then
-              S3_SECRET_KEY="$CLI_SECRET_KEY"
-          else
-              S3_SECRET_KEY=$(openssl rand -base64 32 2>/dev/null | tr -d '/+=' | head -c 40)
-          fi
-
           cat > .env.rustfs << EOF
           RUSTFS_ADMIN_USER=$RUSTFS_ADMIN_USER
           RUSTFS_ADMIN_PASSWORD=$RUSTFS_ADMIN_PASSWORD
-          S3_ACCESS_KEY=$S3_ACCESS_KEY
-          S3_SECRET_KEY=$S3_SECRET_KEY
           EOF
 
           cat > docker-compose.rustfs.yml << 'EOF'
@@ -513,28 +489,12 @@ jobs:
               environment:
                 RUSTFS_ADMIN_USER: ${RUSTFS_ADMIN_USER:-admin}
                 RUSTFS_ADMIN_PASSWORD: ${RUSTFS_ADMIN_PASSWORD:-changeme}
-                S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-                S3_SECRET_KEY: ${S3_SECRET_KEY}
               entrypoint: ["/bin/sh", "-c"]
               command:
                 - |
                   mc alias set rustfs http://rustfs:9000 $${RUSTFS_ADMIN_USER} $${RUSTFS_ADMIN_PASSWORD}
                   mc mb rustfs/shellsight-recordings --ignore-existing
-                  cat > /tmp/writeonly-policy.json << 'POLICY'
-                  {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                      {
-                        "Effect": "Allow",
-                        "Action": ["s3:PutObject", "s3:DeleteObject", "s3:GetBucketLocation"],
-                        "Resource": ["arn:aws:s3:::shellsight-recordings", "arn:aws:s3:::shellsight-recordings/*"]
-                      }
-                    ]
-                  }
-                  POLICY
-                  mc admin policy create rustfs writeonly /tmp/writeonly-policy.json || true
-                  mc admin user svcacct add rustfs $${RUSTFS_ADMIN_USER} --access-key $${S3_ACCESS_KEY} --secret-key $${S3_SECRET_KEY} --policy /tmp/writeonly-policy.json || true
-                  echo 'Bucket and write-only access key created'
+                  echo 'Bucket created successfully'
 
           volumes:
             rustfs-data:
@@ -551,15 +511,16 @@ jobs:
           echo -e "========================================${NC}"
           echo
           echo -e "${BLUE}Console:${NC}    http://localhost:9001"
-          echo -e "${BLUE}Admin:${NC}      $RUSTFS_ADMIN_USER / $RUSTFS_ADMIN_PASSWORD"
-          echo
-          echo -e "${GREEN}S3 Credentials for ShellSight:${NC}"
           echo -e "${BLUE}Endpoint:${NC}   http://localhost:9000"
-          echo -e "${BLUE}Access Key:${NC} $S3_ACCESS_KEY"
-          echo -e "${BLUE}Secret Key:${NC} $S3_SECRET_KEY"
+          echo -e "${BLUE}Admin:${NC}      $RUSTFS_ADMIN_USER / $RUSTFS_ADMIN_PASSWORD"
           echo -e "${BLUE}Bucket:${NC}     shellsight-recordings"
           echo
           echo -e "${YELLOW}Credentials saved to .env.rustfs${NC}"
+          echo
+          echo -e "${GREEN}Next Steps:${NC}"
+          echo "1. Login to RustFS console"
+          echo "2. Go to Access Keys > Create Access Key"
+          echo "3. Add credentials to ShellSight .env file"
           RUSTFS_SCRIPT
 
           chmod +x release-package/deploy-rustfs.sh
@@ -631,9 +592,9 @@ jobs:
             | `-y, --yes` | Auto-answer yes to prompts |
             | `--admin-user USER` | Set admin username (default: admin) |
             | `--admin-password PASS` | Set admin password (auto-generated) |
-            | `--access-key KEY` | Set S3 access key (auto-generated) |
-            | `--secret-key SECRET` | Set S3 secret key (auto-generated) |
             | `-h, --help` | Show help |
+
+            After deploying RustFS, create an Access Key in the RustFS console (http://localhost:9001).
 
             ### Uninstalling
 
