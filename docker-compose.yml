@@ -9,7 +9,6 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
-      - CONFIG_DIR=/app/data
       # Auth settings
       - AUTH_DISABLED=${AUTH_DISABLED:-false}
       - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
@@ -37,8 +36,6 @@ services:
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
       - OIDC_DISPLAY_NAME=${OIDC_DISPLAY_NAME:-SSO}
-    volumes:
-      - shellsight-data:/app/data
     networks:
       - shellsight-network
     healthcheck:
@@ -65,6 +62,3 @@ services:
 networks:
   shellsight-network:
     driver: bridge
-
-volumes:
-  shellsight-data:

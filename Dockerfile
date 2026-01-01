@@ -33,14 +33,10 @@ COPY --from=builder /app/dist ./dist
 # Copy server files
 COPY server ./server
 
-# Create data directory for config storage
-RUN mkdir -p /app/data
-
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOST=0.0.0.0
-ENV CONFIG_DIR=/app/data
 
 # Expose port
 EXPOSE 3001

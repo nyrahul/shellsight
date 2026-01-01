@@ -80,7 +80,6 @@ jobs:
                 - NODE_ENV=production
                 - PORT=3001
                 - HOST=0.0.0.0
-                - CONFIG_DIR=/app/data
                 - AUTH_DISABLED=\${AUTH_DISABLED:-false}
                 - SESSION_SECRET=\${SESSION_SECRET:?SESSION_SECRET is required}
                 - JWT_SECRET=\${JWT_SECRET:?JWT_SECRET is required}
@@ -104,8 +103,6 @@ jobs:
                 - OIDC_CLIENT_ID=\${OIDC_CLIENT_ID:-}
                 - OIDC_CLIENT_SECRET=\${OIDC_CLIENT_SECRET:-}
                 - OIDC_DISPLAY_NAME=\${OIDC_DISPLAY_NAME:-SSO}
-              volumes:
-                - shellsight-data:/app/data
               networks:
                 - shellsight-network
               healthcheck:
@@ -132,9 +129,6 @@ jobs:
           networks:
             shellsight-network:
               driver: bridge
-
-          volumes:
-            shellsight-data:
           EOF
 
           # Create deploy.sh

@@ -5,7 +5,6 @@ import MCPServers from './pages/MCPServers';
 import ShellReplayListPage from './pages/ShellReplayList';
 import Users from './pages/Users';
 import Integrations from './pages/Integrations';
-import Settings from './pages/Settings';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -53,8 +52,6 @@ function AppContent() {
         return <Users />;
       case 'integrations':
         return <Integrations />;
-      case 'storage':
-        return <Settings />;
       default:
         return <ShellReplayListPage />;
     }
