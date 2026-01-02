@@ -162,17 +162,25 @@ if [ ! -f .env ]; then
 
     echo -e "${GREEN}✓ Created .env file with generated secrets${NC}"
     echo
-    echo -e "${YELLOW}IMPORTANT: Configure your S3 settings in .env before continuing.${NC}"
-    echo -e "${YELLOW}Required settings: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET${NC}"
+    echo -e "${YELLOW}IMPORTANT: Configure the following in .env before continuing:${NC}"
+    echo -e "${YELLOW}  - SUPERADMIN_EMAIL (required)${NC}"
+    echo -e "${YELLOW}  - S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET${NC}"
     echo
     echo -e "${BLUE}If you need S3-compatible storage, run ./deploy-rustfs.sh first.${NC}"
     echo
     read -p "Press Enter to continue after configuring .env, or Ctrl+C to cancel..."
 fi
 
-# Validate S3 configuration
+# Validate required configuration
+SUPERADMIN_EMAIL=$(grep "^SUPERADMIN_EMAIL=" .env | cut -d'=' -f2-)
 S3_ACCESS_KEY=$(grep "^S3_ACCESS_KEY=" .env | cut -d'=' -f2-)
 S3_SECRET_KEY=$(grep "^S3_SECRET_KEY=" .env | cut -d'=' -f2-)
+
+if [ -z "$SUPERADMIN_EMAIL" ] || [ "$SUPERADMIN_EMAIL" = "admin@example.com" ]; then
+    echo -e "${RED}Error: SUPERADMIN_EMAIL is not configured in .env${NC}"
+    echo -e "${RED}Please set SUPERADMIN_EMAIL to the email address of the superadmin user.${NC}"
+    exit 1
+fi
 
 if [ -z "$S3_ACCESS_KEY" ] || [ -z "$S3_SECRET_KEY" ]; then
     echo -e "${YELLOW}Warning: S3_ACCESS_KEY or S3_SECRET_KEY is not set in .env${NC}"
