@@ -32,9 +32,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const getProviderColor = (iconType: string) => {
     switch (iconType) {
       case 'google':
-        return 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300';
+        return 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-100 dark:border-gray-600';
       case 'github':
-        return 'bg-gray-900 hover:bg-gray-800 text-white';
+        return 'bg-gray-900 hover:bg-gray-800 text-white dark:bg-gray-700 dark:hover:bg-gray-600';
       case 'microsoft':
         return 'bg-blue-600 hover:bg-blue-700 text-white';
       default:
