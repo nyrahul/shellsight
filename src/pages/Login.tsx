@@ -98,7 +98,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         </div>
 
         <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-          Shell session monitoring and audit platform
+          Eyes on every terminal session.
         </p>
 
         <div className="mt-4 flex justify-center">
