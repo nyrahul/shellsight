@@ -140,6 +140,14 @@ if (process.env.NODE_ENV === 'production') {
 // Setup OIDC (async)
 setupOIDC().catch(console.error);
 
+// Superadmin Configuration - REQUIRED
+const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL;
+if (!SUPERADMIN_EMAIL) {
+  console.error('ERROR: SUPERADMIN_EMAIL environment variable is required but not set.');
+  console.error('Please set SUPERADMIN_EMAIL to the email address of the superadmin user.');
+  process.exit(1);
+}
+
 // S3 Configuration from environment variables
 const S3_BUCKET = process.env.S3_BUCKET || 'shellsight-recordings';
 const S3_REGION = process.env.S3_REGION || 'us-east-1';
@@ -148,8 +156,22 @@ const S3_PREFIX = process.env.S3_PREFIX || ''; // Optional prefix/folder in buck
 const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || '';
 const S3_SECRET_KEY = process.env.S3_SECRET_KEY || '';
 
-// User S3 configurations (in production, use a database)
-const userS3Configs = new Map();
+// Global S3 configuration set by superadmin (applies to all users)
+// In production, use a database
+let globalS3Config = null;
+
+// Helper to check if user is superadmin
+function isSuperAdmin(userEmail) {
+  return userEmail && userEmail.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
+}
+
+// Middleware to require superadmin access
+function requireSuperAdmin(req, res, next) {
+  if (!req.user || !isSuperAdmin(req.user.email)) {
+    return res.status(403).json({ error: 'Superadmin access required' });
+  }
+  next();
+}
 
 const DEBUG = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
 
@@ -349,13 +371,13 @@ app.get('/auth/user', (req, res) => {
       name: 'Anonymous User',
       provider: 'none',
     };
-    res.json({ user: anonymousUser, token: null, authDisabled: true });
+    res.json({ user: anonymousUser, token: null, authDisabled: true, isSuperAdmin: isSuperAdmin(anonymousUser.email) });
     return;
   }
 
   // Check Passport session first
   if (req.isAuthenticated && req.isAuthenticated()) {
-    res.json({ user: req.user, token: generateToken(req.user) });
+    res.json({ user: req.user, token: generateToken(req.user), isSuperAdmin: isSuperAdmin(req.user.email) });
     return;
   }
 
@@ -372,7 +394,7 @@ app.get('/auth/user', (req, res) => {
         name: decoded.name,
         provider: decoded.id.split(':')[0] || 'unknown',
       };
-      res.json({ user });
+      res.json({ user, isSuperAdmin: isSuperAdmin(user.email) });
       return;
     }
   }
@@ -439,18 +461,15 @@ app.get('/api/health', (req, res) => {
 });
 
 // S3 config endpoint (authenticated - for onboarding pages)
-// Returns user-configured S3 if available, otherwise server defaults
+// Returns superadmin-configured S3 if available, otherwise server defaults
 app.get('/api/config/s3', requireAuth, (req, res) => {
-  const userEmail = req.user.email;
-  const userConfig = userS3Configs.get(userEmail);
-
-  if (userConfig) {
+  if (globalS3Config) {
     res.json({
-      bucket: userConfig.bucket,
-      endpoint: userConfig.endpoint || 'AWS',
-      prefix: userConfig.prefix || '',
-      accessKey: userConfig.accessKey,
-      secretKey: userConfig.secretKey, // Return for clipboard copy on onboarding pages
+      bucket: globalS3Config.bucket,
+      endpoint: globalS3Config.endpoint || 'AWS',
+      prefix: globalS3Config.prefix || '',
+      accessKey: globalS3Config.accessKey,
+      secretKey: globalS3Config.secretKey, // Return for clipboard copy on onboarding pages
       isUserConfigured: true,
     });
   } else {
@@ -463,20 +482,17 @@ app.get('/api/config/s3', requireAuth, (req, res) => {
   }
 });
 
-// ============= S3 Integration Endpoints =============
+// ============= S3 Integration Endpoints (Superadmin Only) =============
 
-// Get user's S3 integration config
-app.get('/api/integrations/s3', requireAuth, (req, res) => {
-  const userEmail = req.user.email;
-  const userConfig = userS3Configs.get(userEmail);
-
-  if (userConfig) {
+// Get global S3 integration config (superadmin only)
+app.get('/api/integrations/s3', requireAuth, requireSuperAdmin, (req, res) => {
+  if (globalS3Config) {
     res.json({
       configured: true,
-      endpoint: userConfig.endpoint,
-      bucket: userConfig.bucket,
-      prefix: userConfig.prefix || '',
-      accessKey: userConfig.accessKey,
+      endpoint: globalS3Config.endpoint,
+      bucket: globalS3Config.bucket,
+      prefix: globalS3Config.prefix || '',
+      accessKey: globalS3Config.accessKey,
       // Don't expose secret key
     });
   } else {
@@ -484,10 +500,9 @@ app.get('/api/integrations/s3', requireAuth, (req, res) => {
   }
 });
 
-// Save user's S3 integration config
-app.post('/api/integrations/s3', requireAuth, (req, res) => {
+// Save global S3 integration config (superadmin only)
+app.post('/api/integrations/s3', requireAuth, requireSuperAdmin, (req, res) => {
   try {
-    const userEmail = req.user.email;
     const { endpoint, bucket, prefix, accessKey, secretKey } = req.body;
 
     // Validate required fields
@@ -500,30 +515,29 @@ app.post('/api/integrations/s3', requireAuth, (req, res) => {
       return res.status(400).json({ error: 'Invalid bucket name format' });
     }
 
-    userS3Configs.set(userEmail, {
+    globalS3Config = {
       endpoint,
       bucket,
       prefix: prefix || '',
       accessKey,
       secretKey,
-    });
+    };
 
-    res.json({ success: true, message: 'S3 configuration saved' });
+    res.json({ success: true, message: 'S3 configuration saved (applies to all users)' });
   } catch (error) {
     console.error('Error saving S3 config:', error);
     res.status(500).json({ error: 'Failed to save configuration' });
   }
 });
 
-// Delete user's S3 integration config
-app.delete('/api/integrations/s3', requireAuth, (req, res) => {
-  const userEmail = req.user.email;
-  userS3Configs.delete(userEmail);
+// Delete global S3 integration config (superadmin only)
+app.delete('/api/integrations/s3', requireAuth, requireSuperAdmin, (req, res) => {
+  globalS3Config = null;
   res.json({ success: true, message: 'S3 configuration removed' });
 });
 
-// Test S3 connection by uploading a sample file
-app.post('/api/integrations/s3/test', requireAuth, async (req, res) => {
+// Test S3 connection by uploading a sample file (superadmin only)
+app.post('/api/integrations/s3/test', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const userEmail = req.user.email;
     const { endpoint, bucket, prefix, accessKey, secretKey } = req.body;
@@ -1016,6 +1030,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
   console.log(`WebSocket server running on ws://${HOST}:${PORT}`);
   console.log(`Frontend URL (CORS): ${AUTH_CONFIG.frontendUrl}`);
+  console.log(`Superadmin: ${SUPERADMIN_EMAIL}`);
   console.log(`Reading recordings from S3 bucket: ${S3_BUCKET}`);
   if (S3_ENDPOINT) {
     console.log(`Using S3 endpoint: ${S3_ENDPOINT}`);

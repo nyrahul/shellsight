@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Activity,
   Settings,
@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import ShellSightIcon from './ShellSightIcon';
 
 interface MenuItem {
@@ -70,8 +71,30 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const { isSuperAdmin } = useAuth();
 
   const isExpanded = !isCollapsed || isHovered;
+
+  // Filter menu items based on user role
+  const filteredMenuItems = useMemo(() => {
+    return menuItems.map(item => {
+      if (item.id === 'settings' && item.children) {
+        // Filter out Integrations for non-superadmin users
+        const filteredChildren = item.children.filter(child => {
+          if (child.id === 'integrations') {
+            return isSuperAdmin;
+          }
+          return true;
+        });
+        // If no children left after filtering, don't show the Settings menu
+        if (filteredChildren.length === 0) {
+          return null;
+        }
+        return { ...item, children: filteredChildren };
+      }
+      return item;
+    }).filter(Boolean) as MenuItem[];
+  }, [isSuperAdmin]);
 
   const toggleExpand = (id: string) => {
     const newExpanded = new Set(expandedItems);
@@ -140,7 +163,7 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
         </h1>
       </div>
       <nav className="flex-1 overflow-y-auto py-4 overflow-x-hidden">
-        {menuItems.map((item) => renderMenuItem(item))}
+        {filteredMenuItems.map((item) => renderMenuItem(item))}
       </nav>
       <div className={`px-2 py-3 border-t border-gray-200 dark:border-gray-700 flex ${isExpanded ? 'justify-between' : 'flex-col gap-2 items-center'}`}>
         <button

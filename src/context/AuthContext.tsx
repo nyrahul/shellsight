@@ -20,6 +20,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   authDisabled: boolean;
+  isSuperAdmin: boolean;
   providers: AuthProvider[];
   login: (provider: string) => void;
   logout: () => Promise<void>;
@@ -36,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('auth_token'));
   const [isLoading, setIsLoading] = useState(true);
   const [authDisabled, setAuthDisabled] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [providers, setProviders] = useState<AuthProvider[]>([]);
 
   // Fetch available providers and auth status
@@ -65,12 +67,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.authDisabled) {
           setAuthDisabled(true);
           setUser(data.user);
+          setIsSuperAdmin(data.isSuperAdmin || false);
           setIsLoading(false);
           return;
         }
 
         if (data.user) {
           setUser(data.user);
+          setIsSuperAdmin(data.isSuperAdmin || false);
         } else if (token) {
           // Token invalid, clear it
           localStorage.removeItem('auth_token');
@@ -105,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('auth_token');
     setToken(null);
     setUser(null);
+    setIsSuperAdmin(false);
   };
 
   const handleCallback = (newToken: string) => {
@@ -120,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         authDisabled,
+        isSuperAdmin,
         providers,
         login,
         logout,
