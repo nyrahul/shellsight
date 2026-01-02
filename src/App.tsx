@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Sidebar from './components/Sidebar';
+import Dashboard from './pages/Dashboard';
 import Clusters from './pages/Clusters';
 import MCPServers from './pages/MCPServers';
 import ShellReplayListPage from './pages/ShellReplayList';
@@ -13,7 +14,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { LogOut, User } from 'lucide-react';
 
 function AppContent() {
-  const [currentPage, setCurrentPage] = useState('shell-replay-list');
+  const [currentPage, setCurrentPage] = useState('dashboard');
   const { user, isAuthenticated, isLoading, authDisabled, logout } = useAuth();
 
   // Handle auth callback route
@@ -44,6 +45,8 @@ function AppContent() {
 
   const renderPage = () => {
     switch (currentPage) {
+      case 'dashboard':
+        return <Dashboard />;
       case 'clusters':
         return <Clusters />;
       case 'mcp-servers':
@@ -59,7 +62,7 @@ function AppContent() {
       case 'about':
         return <About />;
       default:
-        return <ShellReplayListPage />;
+        return <Dashboard />;
     }
   };
 

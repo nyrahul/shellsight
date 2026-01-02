@@ -14,6 +14,7 @@ import {
   Monitor,
   Box,
   Info,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import ShellSightIcon from './ShellSightIcon';
@@ -31,6 +32,11 @@ interface SidebarProps {
 }
 
 const menuItems: MenuItem[] = [
+  {
+    id: 'dashboard',
+    label: 'Dashboard',
+    icon: <LayoutDashboard className="w-5 h-5" />,
+  },
   {
     id: 'onboard',
     label: 'Onboard',

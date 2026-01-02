@@ -357,6 +357,99 @@ app.get('/api/version', (req, res) => {
   res.json({ version: process.env.APP_VERSION || 'dev' });
 });
 
+// Dashboard stats endpoint
+app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const days = parseInt(req.query.days) || 7;
+
+    // Get all recordings for the user
+    const allFolders = await listRecordingFolders(userEmail);
+
+    // Parse folder names to extract workload info and timestamps
+    const recordings = [];
+    const workloads = { vms: new Set(), k8s: new Set() };
+
+    for (const folder of allFolders) {
+      const isValid = await isValidRecording(userEmail, folder);
+      if (!isValid) continue;
+
+      // Parse folder name: workloadName_timestamp
+      const match = folder.match(/^(.+)_(\d{10,})$/);
+      if (match) {
+        const workloadName = match[1];
+        const timestamp = parseInt(match[2], 10) * 1000; // Convert to ms
+
+        recordings.push({ workloadName, timestamp });
+
+        // Classify workload: contains @ = VM, otherwise K8s
+        if (workloadName.includes('@')) {
+          workloads.vms.add(workloadName.split('@')[1] || workloadName);
+        } else {
+          workloads.k8s.add(workloadName);
+        }
+      }
+    }
+
+    // Calculate recordings per day for the specified period
+    const now = Date.now();
+    const cutoff = now - (days * 24 * 60 * 60 * 1000);
+    const recordingsByDay = {};
+
+    // Initialize all days in the range
+    for (let i = 0; i < days; i++) {
+      const date = new Date(now - (i * 24 * 60 * 60 * 1000));
+      const dateStr = date.toISOString().split('T')[0];
+      recordingsByDay[dateStr] = 0;
+    }
+
+    // Count recordings per day
+    for (const rec of recordings) {
+      if (rec.timestamp >= cutoff) {
+        const dateStr = new Date(rec.timestamp).toISOString().split('T')[0];
+        if (recordingsByDay[dateStr] !== undefined) {
+          recordingsByDay[dateStr]++;
+        }
+      }
+    }
+
+    // Convert to array sorted by date
+    const dailyRecordings = Object.entries(recordingsByDay)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json({
+      dailyRecordings,
+      totalRecordings: recordings.length,
+      vmCount: workloads.vms.size,
+      k8sCount: workloads.k8s.size,
+      vmHosts: Array.from(workloads.vms),
+      k8sPods: Array.from(workloads.k8s),
+    });
+  } catch (error) {
+    console.error('Error getting dashboard stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// S3 storage stats endpoint
+app.get('/api/dashboard/storage', requireAuth, async (req, res) => {
+  try {
+    // Note: S3 doesn't provide bucket size directly, we'd need to iterate all objects
+    // For now, return basic info. Full implementation would require ListObjectsV2 pagination
+    res.json({
+      bucket: S3_BUCKET,
+      endpoint: S3_ENDPOINT || 'AWS S3',
+      // Storage stats would require iterating all objects which can be expensive
+      // This is a placeholder - actual implementation depends on S3 provider capabilities
+      storageAvailable: true,
+    });
+  } catch (error) {
+    console.error('Error getting storage stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API to list all script folders from S3 for the logged-in user
 app.get('/api/script-folders', requireAuth, async (req, res) => {
   try {
