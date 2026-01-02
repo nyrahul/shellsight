@@ -479,8 +479,29 @@ export default function ShellReplayListPage() {
   };
 
   // Download recording as tgz
-  const downloadRecording = (recordingName: string) => {
-    window.open(`${API_URL}/api/script-download/${encodeURIComponent(recordingName)}`, '_blank');
+  const downloadRecording = async (recordingName: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/script-download/${encodeURIComponent(recordingName)}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${recordingName}.tgz`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError('Failed to download recording');
+      console.error('Download error:', err);
+    }
   };
 
   return (
