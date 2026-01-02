@@ -5,11 +5,28 @@ import { Strategy as MicrosoftStrategy } from 'passport-microsoft';
 import { Issuer, Strategy as OIDCStrategy } from 'openid-client';
 import jwt from 'jsonwebtoken';
 
+// Validate required secrets are set
+function validateSecrets() {
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+    console.error('SECURITY ERROR: SESSION_SECRET must be set and at least 32 characters');
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+  }
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    console.error('SECURITY ERROR: JWT_SECRET must be set and at least 32 characters');
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+  }
+}
+validateSecrets();
+
 // Configuration from environment variables
 const AUTH_CONFIG = {
   disabled: process.env.AUTH_DISABLED === 'true' || process.env.AUTH_DISABLED === '1',
-  sessionSecret: process.env.SESSION_SECRET || 'shellsight-secret-change-in-production',
-  jwtSecret: process.env.JWT_SECRET || 'shellsight-jwt-secret-change-in-production',
+  sessionSecret: process.env.SESSION_SECRET || 'dev-only-secret-not-for-production-use',
+  jwtSecret: process.env.JWT_SECRET || 'dev-only-jwt-secret-not-for-production',
   baseUrl: process.env.BASE_URL || 'http://localhost:3001',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
 

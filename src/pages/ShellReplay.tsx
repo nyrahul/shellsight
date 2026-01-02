@@ -209,7 +209,9 @@ export default function ShellReplayPage() {
       return;
     }
 
-    const ws = new WebSocket(WS_URL);
+    // Include auth token in WebSocket connection
+    const wsUrl = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       setIsConnected(true);
@@ -272,7 +274,7 @@ export default function ShellReplayPage() {
     };
 
     wsRef.current = ws;
-  }, []);
+  }, [token]);
 
   // Refresh both folders and connection status
   const handleRefresh = useCallback(() => {

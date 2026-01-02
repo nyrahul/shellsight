@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import session from 'express-session';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import { join, dirname } from 'path';
@@ -19,19 +21,98 @@ import {
   isAuthDisabled,
 } from './auth.js';
 
+// Security: Validate folder names to prevent path traversal
+function validateFolderName(folderName) {
+  if (!folderName || typeof folderName !== 'string') {
+    throw new Error('Invalid folder name');
+  }
+  // Only allow alphanumeric, hyphens, underscores, dots, @
+  if (!/^[a-zA-Z0-9._@-]+$/.test(folderName)) {
+    throw new Error('Invalid characters in folder name');
+  }
+  // Reject path traversal patterns
+  if (folderName.includes('..') || folderName.includes('/') || folderName.includes('\\')) {
+    throw new Error('Path traversal detected');
+  }
+  if (folderName.length > 255) {
+    throw new Error('Folder name too long');
+  }
+  return folderName;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+
+// WebSocket server with authentication
+const wss = new WebSocketServer({
+  server,
+  verifyClient: (info, callback) => {
+    // Allow unauthenticated if auth is disabled
+    if (isAuthDisabled()) {
+      info.req.user = { email: 'anonymous@localhost', name: 'Anonymous' };
+      callback(true);
+      return;
+    }
+
+    // Extract token from query string
+    try {
+      const url = new URL(info.req.url, `ws://${info.req.headers.host}`);
+      const token = url.searchParams.get('token');
+
+      if (!token) {
+        callback(false, 401, 'Authentication required');
+        return;
+      }
+
+      const decoded = verifyToken(token);
+      if (!decoded) {
+        callback(false, 401, 'Invalid token');
+        return;
+      }
+
+      // Store user info on request for later use
+      info.req.user = decoded;
+      callback(true);
+    } catch (error) {
+      console.error('WebSocket auth error:', error);
+      callback(false, 500, 'Authentication error');
+    }
+  }
+});
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled for WebSocket compatibility
+  crossOriginEmbedderPolicy: false,
+}));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
+// Stricter rate limit for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many authentication attempts' },
+});
 
 // CORS configuration
 app.use(cors({
   origin: AUTH_CONFIG.frontendUrl,
   credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 // Session configuration
 app.use(session({
@@ -41,7 +122,8 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    sameSite: 'lax', // CSRF protection
+    maxAge: 24 * 60 * 60 * 1000, // 1 day (reduced from 7 days)
   },
 }));
 
@@ -347,9 +429,14 @@ app.get('/auth/oidc/callback',
 
 // ============= API Routes =============
 
-// Health check endpoint (returns S3 config for onboarding page)
+// Health check endpoint (public - no sensitive data)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS', prefix: S3_PREFIX });
+  res.json({ status: 'ok' });
+});
+
+// S3 config endpoint (authenticated - for onboarding pages)
+app.get('/api/config/s3', requireAuth, (req, res) => {
+  res.json({ bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS', prefix: S3_PREFIX });
 });
 
 // Version endpoint (returns app version from container image tag)
@@ -361,7 +448,7 @@ app.get('/api/version', (req, res) => {
 app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   try {
     const userEmail = req.user.email;
-    const days = parseInt(req.query.days) || 7;
+    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365); // Bounds: 1-365 days
 
     // Get all recordings for the user
     const allFolders = await listRecordingFolders(userEmail);
@@ -502,14 +589,18 @@ app.get('/api/script-folders', requireAuth, async (req, res) => {
 app.get('/api/script-content/:folder', requireAuth, async (req, res) => {
   try {
     const userEmail = req.user.email;
-    const typescriptKey = getS3Key(userEmail, req.params.folder, 'typescript');
+    const folderName = validateFolderName(req.params.folder);
+    const typescriptKey = getS3Key(userEmail, folderName, 'typescript');
     const content = await getS3ObjectAsString(typescriptKey);
     res.json({ content });
   } catch (error) {
     if (error.name === 'NoSuchKey') {
       return res.status(404).json({ error: 'Script file not found' });
     }
-    res.status(500).json({ error: error.message });
+    if (error.message.includes('Invalid') || error.message.includes('traversal')) {
+      return res.status(400).json({ error: 'Invalid folder name' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -517,7 +608,7 @@ app.get('/api/script-content/:folder', requireAuth, async (req, res) => {
 app.get('/api/script-download/:folder', requireAuth, async (req, res) => {
   try {
     const userEmail = req.user.email;
-    const folderName = req.params.folder;
+    const folderName = validateFolderName(req.params.folder);
     const timingKey = getS3Key(userEmail, folderName, 'timing');
     const typescriptKey = getS3Key(userEmail, folderName, 'typescript');
 
@@ -557,7 +648,11 @@ app.get('/api/script-download/:folder', requireAuth, async (req, res) => {
     if (error.name === 'NoSuchKey') {
       return res.status(404).json({ error: 'Script files not found' });
     }
-    res.status(500).json({ error: error.message });
+    if (error.message.includes('Invalid') || error.message.includes('traversal')) {
+      return res.status(400).json({ error: 'Invalid folder name' });
+    }
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -663,21 +758,42 @@ class ScriptReplayer {
 }
 
 // WebSocket connection for streaming replay output
-wss.on('connection', (ws) => {
-  console.log('WebSocket client connected');
+wss.on('connection', (ws, req) => {
+  // User is authenticated via verifyClient
+  const authenticatedUser = req.user;
+  console.log('WebSocket client connected:', authenticatedUser?.email);
 
   let currentReplayer = null;
+  let messageCount = 0;
+  let lastMessageTime = 0;
 
   ws.on('message', async (message) => {
     try {
       const data = JSON.parse(message.toString());
 
       if (data.action === 'replay') {
-        const folderName = data.folder;
-        const userEmail = data.userEmail;
+        // Rate limiting for WebSocket messages
+        const now = Date.now();
+        if (now - lastMessageTime < 100) { // Max 10 messages per second
+          messageCount++;
+          if (messageCount > 20) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Too many requests' }));
+            return;
+          }
+        } else {
+          messageCount = 0;
+        }
+        lastMessageTime = now;
 
-        if (!userEmail) {
-          ws.send(JSON.stringify({ type: 'error', message: 'User email is required for replay' }));
+        // Use authenticated user email (not client-provided)
+        const userEmail = authenticatedUser.email;
+
+        // Validate folder name
+        let folderName;
+        try {
+          folderName = validateFolderName(data.folder);
+        } catch (err) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid folder name' }));
           return;
         }
 
@@ -696,7 +812,8 @@ wss.on('connection', (ws) => {
             getS3ObjectAsBuffer(typescriptKey),
           ]);
 
-          const speed = data.speed || 1;
+          // Validate speed parameter (0.1x to 10x)
+          const speed = Math.min(Math.max(parseFloat(data.speed) || 1, 0.1), 10);
           const duration = getRecordingDurationFromContent(timingContent);
 
           ws.send(JSON.stringify({

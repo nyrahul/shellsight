@@ -342,7 +342,9 @@ export default function ShellReplayListPage() {
       wsRef.current = null;
     }
 
-    const ws = new WebSocket(WS_URL);
+    // Include auth token in WebSocket connection
+    const wsUrl = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       setIsConnected(true);
@@ -416,7 +418,7 @@ export default function ShellReplayListPage() {
     };
 
     wsRef.current = ws;
-  }, [startHeartbeat, stopHeartbeat, scheduleReconnect]);
+  }, [startHeartbeat, stopHeartbeat, scheduleReconnect, token]);
 
   // Refresh both recordings and connection status
   const handleRefresh = useCallback(() => {
