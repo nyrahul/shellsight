@@ -13,16 +13,20 @@ interface S3Config {
   accessKey?: string;
 }
 
+interface S3Defaults {
+  endpoint: string;
+  bucket: string;
+  prefix: string;
+}
+
 export default function Integrations() {
   const { token } = useAuth();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
 
   // S3 Integration state
   const [s3Config, setS3Config] = useState<S3Config>({ configured: false });
+  const [s3Defaults, setS3Defaults] = useState<S3Defaults>({ endpoint: '', bucket: '', prefix: '' });
   const [s3Form, setS3Form] = useState({
-    endpoint: '',
-    bucket: '',
-    prefix: '',
     accessKey: '',
     secretKey: '',
   });
@@ -33,7 +37,26 @@ export default function Integrations() {
   const [showSecretKey, setShowSecretKey] = useState(false);
 
   useEffect(() => {
-    // Fetch existing S3 config
+    // Fetch server defaults for S3 config
+    const fetchS3Defaults = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/config/s3`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setS3Defaults({
+            endpoint: data.endpoint || '',
+            bucket: data.bucket || '',
+            prefix: data.prefix || '',
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch S3 defaults:', err);
+      }
+    };
+
+    // Fetch existing user S3 config
     const fetchS3Config = async () => {
       try {
         const response = await fetch(`${API_URL}/api/integrations/s3`, {
@@ -44,9 +67,6 @@ export default function Integrations() {
           setS3Config(data);
           if (data.configured) {
             setS3Form({
-              endpoint: data.endpoint || '',
-              bucket: data.bucket || '',
-              prefix: data.prefix || '',
               accessKey: data.accessKey || '',
               secretKey: '', // Never returned from server
             });
@@ -56,6 +76,8 @@ export default function Integrations() {
         console.error('Failed to fetch S3 config:', err);
       }
     };
+
+    fetchS3Defaults();
     fetchS3Config();
 
     const mockIntegrations: Integration[] = [
@@ -88,13 +110,22 @@ export default function Integrations() {
     setS3TestResult(null);
 
     try {
+      // Combine server defaults with user credentials
+      const payload = {
+        endpoint: s3Defaults.endpoint,
+        bucket: s3Defaults.bucket,
+        prefix: s3Defaults.prefix,
+        accessKey: s3Form.accessKey,
+        secretKey: s3Form.secretKey,
+      };
+
       const response = await fetch(`${API_URL}/api/integrations/s3/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(s3Form),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -116,21 +147,30 @@ export default function Integrations() {
     setS3Saving(true);
 
     try {
+      // Combine server defaults with user credentials
+      const payload = {
+        endpoint: s3Defaults.endpoint,
+        bucket: s3Defaults.bucket,
+        prefix: s3Defaults.prefix,
+        accessKey: s3Form.accessKey,
+        secretKey: s3Form.secretKey,
+      };
+
       const response = await fetch(`${API_URL}/api/integrations/s3`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(s3Form),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         setS3Config({
           configured: true,
-          endpoint: s3Form.endpoint,
-          bucket: s3Form.bucket,
-          prefix: s3Form.prefix,
+          endpoint: s3Defaults.endpoint,
+          bucket: s3Defaults.bucket,
+          prefix: s3Defaults.prefix,
           accessKey: s3Form.accessKey,
         });
         setShowS3Form(false);
@@ -166,9 +206,6 @@ export default function Integrations() {
       if (response.ok) {
         setS3Config({ configured: false });
         setS3Form({
-          endpoint: '',
-          bucket: '',
-          prefix: '',
           accessKey: '',
           secretKey: '',
         });
@@ -305,43 +342,48 @@ export default function Integrations() {
 
               {(!s3Config.configured || showS3Form) && (
                 <div className="mt-4 space-y-4">
+                  {/* Server defaults - read only */}
+                  <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 uppercase font-medium">Server Configuration (Read Only)</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          S3 Endpoint
+                        </label>
+                        <input
+                          type="text"
+                          value={s3Defaults.endpoint}
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Bucket Name
+                        </label>
+                        <input
+                          type="text"
+                          value={s3Defaults.bucket}
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Prefix
+                        </label>
+                        <input
+                          type="text"
+                          value={s3Defaults.prefix || '(none)'}
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* User credentials - editable */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        S3 Endpoint <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={s3Form.endpoint}
-                        onChange={(e) => setS3Form({ ...s3Form, endpoint: e.target.value })}
-                        placeholder="https://s3.example.com"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Bucket Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={s3Form.bucket}
-                        onChange={(e) => setS3Form({ ...s3Form, bucket: e.target.value })}
-                        placeholder="shellsight-recordings"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Prefix (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={s3Form.prefix}
-                        onChange={(e) => setS3Form({ ...s3Form, prefix: e.target.value })}
-                        placeholder="recordings/"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Access Key <span className="text-red-500">*</span>
@@ -354,7 +396,7 @@ export default function Integrations() {
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Secret Key <span className="text-red-500">*</span>
                       </label>
@@ -392,7 +434,7 @@ export default function Integrations() {
                   <div className="flex gap-3">
                     <button
                       onClick={handleS3Test}
-                      disabled={s3Testing || !s3Form.endpoint || !s3Form.bucket || !s3Form.accessKey || !s3Form.secretKey}
+                      disabled={s3Testing || !s3Defaults.endpoint || !s3Defaults.bucket || !s3Form.accessKey || !s3Form.secretKey}
                       className="flex items-center gap-2 text-sm font-medium py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
                     >
                       {s3Testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
@@ -400,7 +442,7 @@ export default function Integrations() {
                     </button>
                     <button
                       onClick={handleS3Save}
-                      disabled={s3Saving || !s3Form.endpoint || !s3Form.bucket || !s3Form.accessKey || (!s3Form.secretKey && !s3Config.configured)}
+                      disabled={s3Saving || !s3Defaults.endpoint || !s3Defaults.bucket || !s3Form.accessKey || (!s3Form.secretKey && !s3Config.configured)}
                       className="flex items-center gap-2 text-sm font-medium py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {s3Saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
