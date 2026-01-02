@@ -625,6 +625,11 @@ wss.on('connection', (ws) => {
         }
       }
 
+      if (data.action === 'ping') {
+        // Respond to heartbeat ping
+        ws.send(JSON.stringify({ type: 'pong' }));
+      }
+
       if (data.action === 'stop') {
         if (currentReplayer) {
           currentReplayer.stop();

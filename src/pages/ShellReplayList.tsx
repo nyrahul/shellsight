@@ -47,6 +47,8 @@ export default function ShellReplayListPage() {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const startTimeRef = useRef<number>(0);
   const progressIntervalRef = useRef<number | null>(null);
+  const heartbeatIntervalRef = useRef<number | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
 
   // Format duration in seconds to human readable string
   const formatDuration = (seconds: number): string => {
@@ -294,10 +296,50 @@ export default function ShellReplayListPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying]);
 
+  // Start heartbeat to keep WebSocket connection alive
+  const startHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
+    // Send ping every 30 seconds to keep connection alive (Cloudflare timeout is ~100s)
+    heartbeatIntervalRef.current = window.setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ action: 'ping' }));
+      }
+    }, 30000);
+  }, []);
+
+  // Stop heartbeat
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+  }, []);
+
+  // Schedule reconnection attempt
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    // Try to reconnect after 3 seconds
+    reconnectTimeoutRef.current = window.setTimeout(() => {
+      if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+        connectWebSocket();
+      }
+    }, 3000);
+  }, []);
+
   // Connect to WebSocket
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
+    }
+
+    // Clean up existing connection if any
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
     }
 
     const ws = new WebSocket(WS_URL);
@@ -305,6 +347,7 @@ export default function ShellReplayListPage() {
     ws.onopen = () => {
       setIsConnected(true);
       setError('');
+      startHeartbeat();
     };
 
     ws.onmessage = (event) => {
@@ -312,6 +355,9 @@ export default function ShellReplayListPage() {
         const data = JSON.parse(event.data);
 
         switch (data.type) {
+          case 'pong':
+            // Heartbeat response, connection is alive
+            break;
           case 'start':
             // Clear terminal for new replay
             if (terminalRef.current) {
@@ -359,6 +405,9 @@ export default function ShellReplayListPage() {
       setIsPlaying(false);
       setPlayingRecording('');
       stopProgressTracking();
+      stopHeartbeat();
+      // Auto-reconnect after connection closes
+      scheduleReconnect();
     };
 
     ws.onerror = () => {
@@ -367,7 +416,7 @@ export default function ShellReplayListPage() {
     };
 
     wsRef.current = ws;
-  }, []);
+  }, [startHeartbeat, stopHeartbeat, scheduleReconnect]);
 
   // Refresh both recordings and connection status
   const handleRefresh = useCallback(() => {
@@ -381,9 +430,13 @@ export default function ShellReplayListPage() {
   useEffect(() => {
     connectWebSocket();
     return () => {
+      stopHeartbeat();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       wsRef.current?.close();
     };
-  }, [connectWebSocket]);
+  }, [connectWebSocket, stopHeartbeat]);
 
   // Start replay for a specific recording
   const startReplay = (recordingName: string) => {
