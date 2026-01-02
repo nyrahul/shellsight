@@ -1,7 +1,17 @@
 import { useEffect } from 'react';
-import { Github, Chrome, Building2, Key } from 'lucide-react';
+import { Github, Chrome, Building2, Key, Shield, ShieldCheck, FileCheck, Lock, Building, BadgeCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ShellSightIcon from '../components/ShellSightIcon';
+
+const complianceStandards = [
+  { name: 'PCI DSS', icon: Lock, color: 'text-blue-600 dark:text-blue-400' },
+  { name: 'HIPAA', icon: ShieldCheck, color: 'text-green-600 dark:text-green-400' },
+  { name: 'SOX', icon: FileCheck, color: 'text-purple-600 dark:text-purple-400' },
+  { name: 'ISO 27001', icon: BadgeCheck, color: 'text-indigo-600 dark:text-indigo-400' },
+  { name: 'NIST 800-53', icon: Shield, color: 'text-red-600 dark:text-red-400' },
+  { name: 'FedRAMP', icon: Building, color: 'text-orange-600 dark:text-orange-400' },
+  { name: 'FISMA', icon: ShieldCheck, color: 'text-teal-600 dark:text-teal-400' },
+];
 
 interface LoginProps {
   onLoginSuccess?: () => void;
@@ -100,6 +110,30 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
           Eyes on every terminal session.
         </p>
+
+        {/* Compliance Standards */}
+        <div className="mt-6">
+          <p className="text-xs text-center text-gray-400 dark:text-gray-500 mb-3">
+            Helps meet compliance requirements
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {complianceStandards.map((standard) => {
+              const Icon = standard.icon;
+              return (
+                <div
+                  key={standard.name}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
+                  title={standard.name}
+                >
+                  <Icon className={`w-3 h-3 ${standard.color}`} />
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                    {standard.name}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="mt-4 flex justify-center">
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-sm">
