@@ -59,7 +59,7 @@ export default function About() {
             <span className="text-gray-900 dark:text-gray-100">Shell session monitoring dashboard</span>
           </div>
 
-          <div className="flex items-center justify-between py-3">
+          <div className="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
             <span className="text-gray-600 dark:text-gray-400">Source Code</span>
             <a
               href="https://github.com/nyrahul/shellsight"
@@ -68,6 +68,19 @@ export default function About() {
               className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline"
             >
               GitHub
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+
+          <div className="flex items-center justify-between py-3">
+            <span className="text-gray-600 dark:text-gray-400">Powered by</span>
+            <a
+              href="https://www.accuknox.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
+            >
+              AccuKnox
               <ExternalLink className="w-4 h-4" />
             </a>
           </div>
