@@ -12,7 +12,7 @@ export default function OnboardVM() {
   useEffect(() => {
     const fetchS3Config = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/health`, {
+        const response = await fetch(`${API_URL}/api/config/s3`, {
           headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         });
         if (response.ok) {
