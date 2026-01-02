@@ -14,6 +14,7 @@ import {
   PlusCircle,
   Monitor,
   Box,
+  Info,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import ShellSightIcon from './ShellSightIcon';
@@ -55,6 +56,7 @@ const menuItems: MenuItem[] = [
     children: [
       { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
       { id: 'integrations', label: 'Integrations', icon: <Plug className="w-4 h-4" /> },
+      { id: 'about', label: 'About', icon: <Info className="w-4 h-4" /> },
     ],
   },
 ];

@@ -19,6 +19,9 @@ RUN npm run build
 # Stage 2: Production image
 FROM node:18-alpine AS production
 
+# Accept version as build argument
+ARG APP_VERSION=dev
+
 WORKDIR /app
 
 # Copy package files
@@ -37,6 +40,7 @@ COPY server ./server
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOST=0.0.0.0
+ENV APP_VERSION=${APP_VERSION}
 
 # Expose port
 EXPOSE 3001

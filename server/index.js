@@ -352,6 +352,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS' });
 });
 
+// Version endpoint (returns app version from container image tag)
+app.get('/api/version', (req, res) => {
+  res.json({ version: process.env.APP_VERSION || 'dev' });
+});
+
 // API to list all script folders from S3 for the logged-in user
 app.get('/api/script-folders', requireAuth, async (req, res) => {
   try {

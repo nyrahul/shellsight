@@ -6,6 +6,7 @@ import ShellReplayListPage from './pages/ShellReplayList';
 import Users from './pages/Users';
 import Integrations from './pages/Integrations';
 import OnboardVM from './pages/OnboardVM';
+import About from './pages/About';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -55,6 +56,8 @@ function AppContent() {
         return <Integrations />;
       case 'onboard-vm':
         return <OnboardVM />;
+      case 'about':
+        return <About />;
       default:
         return <ShellReplayListPage />;
     }
