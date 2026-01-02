@@ -8,13 +8,14 @@ interface S3ConfigState {
   endpoint: string;
   bucket: string;
   accessKey: string;
+  secretKey: string;
   isUserConfigured: boolean;
 }
 
 export default function OnboardVM() {
   const { user, token } = useAuth();
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
-  const [s3Config, setS3Config] = useState<S3ConfigState>({ endpoint: '', bucket: '', accessKey: '', isUserConfigured: false });
+  const [s3Config, setS3Config] = useState<S3ConfigState>({ endpoint: '', bucket: '', accessKey: '', secretKey: '', isUserConfigured: false });
 
   useEffect(() => {
     const fetchS3Config = async () => {
@@ -28,6 +29,7 @@ export default function OnboardVM() {
             endpoint: data.endpoint || '',
             bucket: data.bucket || '',
             accessKey: data.accessKey || '',
+            secretKey: data.secretKey || '',
             isUserConfigured: data.isUserConfigured || false,
           });
         }
@@ -48,13 +50,26 @@ export default function OnboardVM() {
   const s3Endpoint = s3Config.endpoint || '[S3_ENDPOINT]';
   const s3Bucket = s3Config.bucket || '[S3_BUCKET]';
   const s3AccessKey = s3Config.accessKey || '[S3_ACCESS_KEY]';
+  // Display masked secret, but use real value for clipboard
+  const s3SecretKeyDisplay = s3Config.isUserConfigured ? '*****' : '[S3_SECRET_KEY]';
+  const s3SecretKeyReal = s3Config.secretKey || '[S3_SECRET_KEY]';
 
-  const onboardCommand = `curl -sSL https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ssh-ssnrec/install-recorded-shell.sh | \\
+  // Command displayed on screen (with masked secret)
+  const onboardCommandDisplay = `curl -sSL https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ssh-ssnrec/install-recorded-shell.sh | \\
    sudo USER_EMAIL=${userEmail} \\
    S3_ENDPOINT=${s3Endpoint} \\
    S3_BUCKET=${s3Bucket} \\
    S3_ACCESS_KEY=${s3AccessKey} \\
-   S3_SECRET_KEY=[S3_SECRET_KEY] \\
+   S3_SECRET_KEY=${s3SecretKeyDisplay} \\
+   bash`;
+
+  // Command copied to clipboard (with real secret)
+  const onboardCommandClipboard = `curl -sSL https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ssh-ssnrec/install-recorded-shell.sh | \\
+   sudo USER_EMAIL=${userEmail} \\
+   S3_ENDPOINT=${s3Endpoint} \\
+   S3_BUCKET=${s3Bucket} \\
+   S3_ACCESS_KEY=${s3AccessKey} \\
+   S3_SECRET_KEY=${s3SecretKeyReal} \\
    bash`;
 
   const deboardCommand = `curl -fsSL https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ssh-ssnrec/uninstall-rec-shell.sh | sudo bash -s -- --purge-logs`;
@@ -107,10 +122,10 @@ export default function OnboardVM() {
 
         <div className="relative">
           <pre className="bg-gray-900 dark:bg-gray-950 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm font-mono">
-            {onboardCommand}
+            {onboardCommandDisplay}
           </pre>
           <button
-            onClick={() => copyToClipboard(onboardCommand, 'onboard')}
+            onClick={() => copyToClipboard(onboardCommandClipboard, 'onboard')}
             className="absolute top-2 right-2 p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
             title="Copy to clipboard"
           >

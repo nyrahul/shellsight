@@ -9,13 +9,14 @@ interface S3ConfigState {
   bucket: string;
   prefix: string;
   accessKey: string;
+  secretKey: string;
   isUserConfigured: boolean;
 }
 
 export default function OnboardK8s() {
   const { user, token } = useAuth();
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
-  const [s3Config, setS3Config] = useState<S3ConfigState>({ endpoint: '', bucket: '', prefix: '', accessKey: '', isUserConfigured: false });
+  const [s3Config, setS3Config] = useState<S3ConfigState>({ endpoint: '', bucket: '', prefix: '', accessKey: '', secretKey: '', isUserConfigured: false });
 
   useEffect(() => {
     const fetchS3Config = async () => {
@@ -30,6 +31,7 @@ export default function OnboardK8s() {
             bucket: data.bucket || '',
             prefix: data.prefix || '',
             accessKey: data.accessKey || '',
+            secretKey: data.secretKey || '',
             isUserConfigured: data.isUserConfigured || false,
           });
         }
@@ -51,12 +53,16 @@ export default function OnboardK8s() {
   const s3Bucket = s3Config.bucket || '[S3_BUCKET]';
   const s3Prefix = s3Config.prefix || '[S3_PREFIX]';
   const s3AccessKey = s3Config.accessKey || '[S3_ACCESS_KEY]';
+  // Display masked secret, but use real value for clipboard
+  const s3SecretKeyDisplay = s3Config.isUserConfigured ? '*****' : '[S3_SECRET_KEY]';
+  const s3SecretKeyReal = s3Config.secretKey || '[S3_SECRET_KEY]';
 
   const denyExecCommand = `kubectl apply -f https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ak-debug-image/deny-pod-exec.yaml`;
 
   const whitelistCommand = `kubectl apply -f https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ak-debug-image/whitelist-ephemeral-imgs.yaml`;
 
-  const debugCommand = `kubectl debug -it -n <NAMESPACE> <POD_NAME> \\
+  // Command displayed on screen (with masked secret)
+  const debugCommandDisplay = `kubectl debug -it -n <NAMESPACE> <POD_NAME> \\
   --image=nyrahul/ak-debug-image:1.6 --profile=general \\
   --image-pull-policy=Always \\
   --env USER_EMAIL=${userEmail} \\
@@ -64,7 +70,18 @@ export default function OnboardK8s() {
   --env S3_BUCKET=${s3Bucket} \\
   --env S3_PREFIX=${s3Prefix} \\
   --env S3_ACCESS_KEY=${s3AccessKey} \\
-  --env S3_SECRET_KEY=[S3_SECRET_KEY]`;
+  --env S3_SECRET_KEY=${s3SecretKeyDisplay}`;
+
+  // Command copied to clipboard (with real secret)
+  const debugCommandClipboard = `kubectl debug -it -n <NAMESPACE> <POD_NAME> \\
+  --image=nyrahul/ak-debug-image:1.6 --profile=general \\
+  --image-pull-policy=Always \\
+  --env USER_EMAIL=${userEmail} \\
+  --env S3_ENDPOINT=${s3Endpoint} \\
+  --env S3_BUCKET=${s3Bucket} \\
+  --env S3_PREFIX=${s3Prefix} \\
+  --env S3_ACCESS_KEY=${s3AccessKey} \\
+  --env S3_SECRET_KEY=${s3SecretKeyReal}`;
 
   return (
     <div className="p-6">
@@ -172,10 +189,10 @@ export default function OnboardK8s() {
 
         <div className="relative">
           <pre className="bg-gray-900 dark:bg-gray-950 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm font-mono">
-            {debugCommand}
+            {debugCommandDisplay}
           </pre>
           <button
-            onClick={() => copyToClipboard(debugCommand, 'debug')}
+            onClick={() => copyToClipboard(debugCommandClipboard, 'debug')}
             className="absolute top-2 right-2 p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
             title="Copy to clipboard"
           >

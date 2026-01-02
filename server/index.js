@@ -450,7 +450,7 @@ app.get('/api/config/s3', requireAuth, (req, res) => {
       endpoint: userConfig.endpoint || 'AWS',
       prefix: userConfig.prefix || '',
       accessKey: userConfig.accessKey,
-      secretKey: '***', // Don't expose secret
+      secretKey: userConfig.secretKey, // Return for clipboard copy on onboarding pages
       isUserConfigured: true,
     });
   } else {
