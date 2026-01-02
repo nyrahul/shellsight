@@ -349,7 +349,7 @@ app.get('/auth/oidc/callback',
 
 // Health check endpoint (returns S3 config for onboarding page)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS' });
+  res.json({ status: 'ok', bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS', prefix: S3_PREFIX });
 });
 
 // Version endpoint (returns app version from container image tag)

@@ -6,6 +6,7 @@ import ShellReplayListPage from './pages/ShellReplayList';
 import Users from './pages/Users';
 import Integrations from './pages/Integrations';
 import OnboardVM from './pages/OnboardVM';
+import OnboardK8s from './pages/OnboardK8s';
 import About from './pages/About';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
@@ -56,6 +57,8 @@ function AppContent() {
         return <Integrations />;
       case 'onboard-vm':
         return <OnboardVM />;
+      case 'onboard-k8s':
+        return <OnboardK8s />;
       case 'about':
         return <About />;
       default:
