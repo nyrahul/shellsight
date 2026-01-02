@@ -4,7 +4,6 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  Users,
   Plug,
   List,
   Sun,
@@ -54,7 +53,6 @@ const menuItems: MenuItem[] = [
     label: 'Settings',
     icon: <Settings className="w-5 h-5" />,
     children: [
-      { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
       { id: 'integrations', label: 'Integrations', icon: <Plug className="w-4 h-4" /> },
       { id: 'about', label: 'About', icon: <Info className="w-4 h-4" /> },
     ],

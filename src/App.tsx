@@ -3,7 +3,6 @@ import Sidebar from './components/Sidebar';
 import Clusters from './pages/Clusters';
 import MCPServers from './pages/MCPServers';
 import ShellReplayListPage from './pages/ShellReplayList';
-import Users from './pages/Users';
 import Integrations from './pages/Integrations';
 import OnboardVM from './pages/OnboardVM';
 import OnboardK8s from './pages/OnboardK8s';
@@ -51,8 +50,6 @@ function AppContent() {
         return <MCPServers />;
       case 'shell-replay-list':
         return <ShellReplayListPage />;
-      case 'users':
-        return <Users />;
       case 'integrations':
         return <Integrations />;
       case 'onboard-vm':
