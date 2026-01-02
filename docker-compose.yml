@@ -11,6 +11,8 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
+      # Superadmin (required)
+      - SUPERADMIN_EMAIL=${SUPERADMIN_EMAIL:?SUPERADMIN_EMAIL is required}
       # Auth settings
       - AUTH_DISABLED=${AUTH_DISABLED:-false}
       - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
