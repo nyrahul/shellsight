@@ -1,13 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Box, Copy, Check, Terminal, Shield } from 'lucide-react';
+import { Box, Copy, Check, Terminal, Shield, CheckCircle, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '');
 
+interface S3ConfigState {
+  endpoint: string;
+  bucket: string;
+  prefix: string;
+  accessKey: string;
+  isUserConfigured: boolean;
+}
+
 export default function OnboardK8s() {
   const { user, token } = useAuth();
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
-  const [s3Config, setS3Config] = useState<{ endpoint: string; bucket: string; prefix: string }>({ endpoint: '', bucket: '', prefix: '' });
+  const [s3Config, setS3Config] = useState<S3ConfigState>({ endpoint: '', bucket: '', prefix: '', accessKey: '', isUserConfigured: false });
 
   useEffect(() => {
     const fetchS3Config = async () => {
@@ -21,6 +29,8 @@ export default function OnboardK8s() {
             endpoint: data.endpoint || '',
             bucket: data.bucket || '',
             prefix: data.prefix || '',
+            accessKey: data.accessKey || '',
+            isUserConfigured: data.isUserConfigured || false,
           });
         }
       } catch (err) {
@@ -40,6 +50,7 @@ export default function OnboardK8s() {
   const s3Endpoint = s3Config.endpoint || '[S3_ENDPOINT]';
   const s3Bucket = s3Config.bucket || '[S3_BUCKET]';
   const s3Prefix = s3Config.prefix || '[S3_PREFIX]';
+  const s3AccessKey = s3Config.accessKey || '[S3_ACCESS_KEY]';
 
   const denyExecCommand = `kubectl apply -f https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ak-debug-image/deny-pod-exec.yaml`;
 
@@ -52,7 +63,7 @@ export default function OnboardK8s() {
   --env S3_ENDPOINT=${s3Endpoint} \\
   --env S3_BUCKET=${s3Bucket} \\
   --env S3_PREFIX=${s3Prefix} \\
-  --env S3_ACCESS_KEY=[S3_ACCESS_KEY] \\
+  --env S3_ACCESS_KEY=${s3AccessKey} \\
   --env S3_SECRET_KEY=[S3_SECRET_KEY]`;
 
   return (
@@ -66,6 +77,29 @@ export default function OnboardK8s() {
           <p className="text-gray-600 dark:text-gray-400 mt-1">Configure shell recording for Kubernetes pods</p>
         </div>
       </div>
+
+      {/* S3 Config Status */}
+      {s3Config.isUserConfigured ? (
+        <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
+          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-green-800 dark:text-green-300">Using your configured S3 storage</p>
+            <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+              Endpoint: {s3Config.endpoint} | Bucket: {s3Config.bucket}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-3">
+          <Settings className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">S3 storage not configured</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+              Configure your S3 storage in <strong>Settings → Integrations</strong> to auto-populate the values below.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Optional Kyverno Policies Section */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">

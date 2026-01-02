@@ -9,7 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as tar from 'tar';
 import { Readable } from 'stream';
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import {
   passport,
   AUTH_CONFIG,
@@ -147,6 +147,10 @@ const S3_ENDPOINT = process.env.S3_ENDPOINT || ''; // Custom endpoint for S3-com
 const S3_PREFIX = process.env.S3_PREFIX || ''; // Optional prefix/folder in bucket
 const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || '';
 const S3_SECRET_KEY = process.env.S3_SECRET_KEY || '';
+
+// User S3 configurations (in production, use a database)
+const userS3Configs = new Map();
+
 const DEBUG = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
 
 function debug(...args) {
@@ -435,8 +439,146 @@ app.get('/api/health', (req, res) => {
 });
 
 // S3 config endpoint (authenticated - for onboarding pages)
+// Returns user-configured S3 if available, otherwise server defaults
 app.get('/api/config/s3', requireAuth, (req, res) => {
-  res.json({ bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS', prefix: S3_PREFIX });
+  const userEmail = req.user.email;
+  const userConfig = userS3Configs.get(userEmail);
+
+  if (userConfig) {
+    res.json({
+      bucket: userConfig.bucket,
+      endpoint: userConfig.endpoint || 'AWS',
+      prefix: userConfig.prefix || '',
+      accessKey: userConfig.accessKey,
+      secretKey: '***', // Don't expose secret
+      isUserConfigured: true,
+    });
+  } else {
+    res.json({
+      bucket: S3_BUCKET,
+      endpoint: S3_ENDPOINT || 'AWS',
+      prefix: S3_PREFIX,
+      isUserConfigured: false,
+    });
+  }
+});
+
+// ============= S3 Integration Endpoints =============
+
+// Get user's S3 integration config
+app.get('/api/integrations/s3', requireAuth, (req, res) => {
+  const userEmail = req.user.email;
+  const userConfig = userS3Configs.get(userEmail);
+
+  if (userConfig) {
+    res.json({
+      configured: true,
+      endpoint: userConfig.endpoint,
+      bucket: userConfig.bucket,
+      prefix: userConfig.prefix || '',
+      accessKey: userConfig.accessKey,
+      // Don't expose secret key
+    });
+  } else {
+    res.json({ configured: false });
+  }
+});
+
+// Save user's S3 integration config
+app.post('/api/integrations/s3', requireAuth, (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const { endpoint, bucket, prefix, accessKey, secretKey } = req.body;
+
+    // Validate required fields
+    if (!endpoint || !bucket || !accessKey || !secretKey) {
+      return res.status(400).json({ error: 'Missing required fields: endpoint, bucket, accessKey, secretKey' });
+    }
+
+    // Basic validation
+    if (bucket.length > 63 || !/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/.test(bucket)) {
+      return res.status(400).json({ error: 'Invalid bucket name format' });
+    }
+
+    userS3Configs.set(userEmail, {
+      endpoint,
+      bucket,
+      prefix: prefix || '',
+      accessKey,
+      secretKey,
+    });
+
+    res.json({ success: true, message: 'S3 configuration saved' });
+  } catch (error) {
+    console.error('Error saving S3 config:', error);
+    res.status(500).json({ error: 'Failed to save configuration' });
+  }
+});
+
+// Delete user's S3 integration config
+app.delete('/api/integrations/s3', requireAuth, (req, res) => {
+  const userEmail = req.user.email;
+  userS3Configs.delete(userEmail);
+  res.json({ success: true, message: 'S3 configuration removed' });
+});
+
+// Test S3 connection by uploading a sample file
+app.post('/api/integrations/s3/test', requireAuth, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const { endpoint, bucket, prefix, accessKey, secretKey } = req.body;
+
+    // Validate required fields
+    if (!endpoint || !bucket || !accessKey || !secretKey) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Create a temporary S3 client with the provided credentials
+    const testS3Client = new S3Client({
+      region: 'us-east-1',
+      endpoint: endpoint,
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId: accessKey,
+        secretAccessKey: secretKey,
+      },
+    });
+
+    // Generate test file content
+    const testFileName = `shellsight-test-${Date.now()}.txt`;
+    const testPrefix = prefix ? (prefix.endsWith('/') ? prefix : prefix + '/') : '';
+    const testKey = `${testPrefix}${userEmail}/${testFileName}`;
+    const testContent = `ShellSight S3 Connection Test\nTimestamp: ${new Date().toISOString()}\nUser: ${userEmail}\nThis file can be safely deleted.`;
+
+    // Upload test file
+    const putCommand = new PutObjectCommand({
+      Bucket: bucket,
+      Key: testKey,
+      Body: testContent,
+      ContentType: 'text/plain',
+    });
+
+    await testS3Client.send(putCommand);
+
+    // Delete test file
+    const deleteCommand = new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: testKey,
+    });
+
+    await testS3Client.send(deleteCommand);
+
+    res.json({
+      success: true,
+      message: 'S3 connection test successful! File was uploaded and deleted.',
+    });
+  } catch (error) {
+    console.error('S3 test error:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Failed to connect to S3',
+    });
+  }
 });
 
 // Version endpoint (returns app version from container image tag)

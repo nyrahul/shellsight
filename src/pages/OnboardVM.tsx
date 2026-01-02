@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Monitor, Copy, Check, Terminal, Trash2 } from 'lucide-react';
+import { Monitor, Copy, Check, Terminal, Trash2, CheckCircle, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL ?? (window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '');
 
+interface S3ConfigState {
+  endpoint: string;
+  bucket: string;
+  accessKey: string;
+  isUserConfigured: boolean;
+}
+
 export default function OnboardVM() {
   const { user, token } = useAuth();
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
-  const [s3Config, setS3Config] = useState<{ endpoint: string; bucket: string }>({ endpoint: '', bucket: '' });
+  const [s3Config, setS3Config] = useState<S3ConfigState>({ endpoint: '', bucket: '', accessKey: '', isUserConfigured: false });
 
   useEffect(() => {
     const fetchS3Config = async () => {
@@ -20,6 +27,8 @@ export default function OnboardVM() {
           setS3Config({
             endpoint: data.endpoint || '',
             bucket: data.bucket || '',
+            accessKey: data.accessKey || '',
+            isUserConfigured: data.isUserConfigured || false,
           });
         }
       } catch (err) {
@@ -38,12 +47,13 @@ export default function OnboardVM() {
   const userEmail = user?.email || '[USER-EMAIL]';
   const s3Endpoint = s3Config.endpoint || '[S3_ENDPOINT]';
   const s3Bucket = s3Config.bucket || '[S3_BUCKET]';
+  const s3AccessKey = s3Config.accessKey || '[S3_ACCESS_KEY]';
 
   const onboardCommand = `curl -sSL https://raw.githubusercontent.com/nyrahul/src/refs/heads/master/ssh-ssnrec/install-recorded-shell.sh | \\
    sudo USER_EMAIL=${userEmail} \\
    S3_ENDPOINT=${s3Endpoint} \\
    S3_BUCKET=${s3Bucket} \\
-   S3_ACCESS_KEY=[S3_ACCESS_KEY] \\
+   S3_ACCESS_KEY=${s3AccessKey} \\
    S3_SECRET_KEY=[S3_SECRET_KEY] \\
    bash`;
 
@@ -60,6 +70,29 @@ export default function OnboardVM() {
           <p className="text-gray-600 dark:text-gray-400 mt-1">Configure shell recording on SSH servers</p>
         </div>
       </div>
+
+      {/* S3 Config Status */}
+      {s3Config.isUserConfigured ? (
+        <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
+          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-green-800 dark:text-green-300">Using your configured S3 storage</p>
+            <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+              Endpoint: {s3Config.endpoint} | Bucket: {s3Config.bucket}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-3">
+          <Settings className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">S3 storage not configured</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+              Configure your S3 storage in <strong>Settings → Integrations</strong> to auto-populate the values below.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Onboard Section */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
