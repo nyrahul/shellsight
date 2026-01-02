@@ -347,6 +347,11 @@ app.get('/auth/oidc/callback',
 
 // ============= API Routes =============
 
+// Health check endpoint (returns S3 config for onboarding page)
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', bucket: S3_BUCKET, endpoint: S3_ENDPOINT || 'AWS' });
+});
+
 // API to list all script folders from S3 for the logged-in user
 app.get('/api/script-folders', requireAuth, async (req, res) => {
   try {
