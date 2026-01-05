@@ -15,6 +15,7 @@ import {
   Box,
   Info,
   LayoutDashboard,
+  Users,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -61,6 +62,7 @@ const menuItems: MenuItem[] = [
     icon: <Settings className="w-5 h-5" />,
     children: [
       { id: 'integrations', label: 'Integrations', icon: <Plug className="w-4 h-4" /> },
+      { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
       { id: 'about', label: 'About', icon: <Info className="w-4 h-4" /> },
     ],
   },
@@ -79,9 +81,9 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
   const filteredMenuItems = useMemo(() => {
     return menuItems.map(item => {
       if (item.id === 'settings' && item.children) {
-        // Filter out Integrations for non-superadmin users
+        // Filter out Integrations and Users for non-superadmin users
         const filteredChildren = item.children.filter(child => {
-          if (child.id === 'integrations') {
+          if (child.id === 'integrations' || child.id === 'users') {
             return isSuperAdmin;
           }
           return true;

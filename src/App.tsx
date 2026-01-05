@@ -8,6 +8,7 @@ import Integrations from './pages/Integrations';
 import OnboardVM from './pages/OnboardVM';
 import OnboardK8s from './pages/OnboardK8s';
 import About from './pages/About';
+import Users from './pages/Users';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -59,6 +60,8 @@ function AppContent() {
         return <OnboardVM />;
       case 'onboard-k8s':
         return <OnboardK8s />;
+      case 'users':
+        return <Users />;
       case 'about':
         return <About />;
       default:

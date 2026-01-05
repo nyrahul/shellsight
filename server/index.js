@@ -20,6 +20,7 @@ import {
   getAvailableProviders,
   isAuthDisabled,
 } from './auth.js';
+import { initUserDb, recordUserLogin, getAllUsers, getUserCount, closeUserDb } from './userdb.js';
 
 // Security: Validate folder names to prevent path traversal
 function validateFolderName(folderName) {
@@ -201,6 +202,16 @@ if (S3_ENDPOINT) {
 }
 
 const s3Client = new S3Client(s3ClientConfig);
+
+// Initialize user database with S3 sync
+initUserDb({
+  bucket: S3_BUCKET,
+  region: S3_REGION,
+  endpoint: S3_ENDPOINT,
+  prefix: S3_PREFIX,
+  accessKey: S3_ACCESS_KEY,
+  secretKey: S3_SECRET_KEY,
+}).catch(err => console.error('Failed to initialize user database:', err));
 
 // Helper to convert S3 stream to buffer
 async function streamToBuffer(stream) {
@@ -418,6 +429,8 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'em
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=google_failed` }),
   (req, res) => {
+    // Record user login
+    recordUserLogin(req.user.email, req.user.name, 'google');
     const token = generateToken(req.user);
     res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
   }
@@ -428,6 +441,8 @@ app.get('/auth/github', passport.authenticate('github', { scope: ['user:email'] 
 app.get('/auth/github/callback',
   passport.authenticate('github', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=github_failed` }),
   (req, res) => {
+    // Record user login
+    recordUserLogin(req.user.email, req.user.name, 'github');
     const token = generateToken(req.user);
     res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
   }
@@ -438,6 +453,8 @@ app.get('/auth/microsoft', passport.authenticate('microsoft', { scope: ['user.re
 app.get('/auth/microsoft/callback',
   passport.authenticate('microsoft', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=microsoft_failed` }),
   (req, res) => {
+    // Record user login
+    recordUserLogin(req.user.email, req.user.name, 'microsoft');
     const token = generateToken(req.user);
     res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
   }
@@ -448,6 +465,8 @@ app.get('/auth/oidc', passport.authenticate('oidc'));
 app.get('/auth/oidc/callback',
   passport.authenticate('oidc', { failureRedirect: `${AUTH_CONFIG.frontendUrl}/login?error=oidc_failed` }),
   (req, res) => {
+    // Record user login
+    recordUserLogin(req.user.email, req.user.name, 'oidc');
     const token = generateToken(req.user);
     res.redirect(`${AUTH_CONFIG.frontendUrl}/auth/callback?token=${token}`);
   }
@@ -592,6 +611,35 @@ app.post('/api/integrations/s3/test', requireAuth, requireSuperAdmin, async (req
       success: false,
       error: error.message || 'Failed to connect to S3',
     });
+  }
+});
+
+// ============= Admin Endpoints (Superadmin Only) =============
+
+// Get all users (superadmin only)
+app.get('/api/admin/users', requireAuth, requireSuperAdmin, (req, res) => {
+  try {
+    const users = getAllUsers();
+    res.json({
+      users,
+      total: users.length,
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Get user stats (superadmin only)
+app.get('/api/admin/stats', requireAuth, requireSuperAdmin, (req, res) => {
+  try {
+    const userCount = getUserCount();
+    res.json({
+      totalUsers: userCount,
+    });
+  } catch (error) {
+    console.error('Error fetching admin stats:', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
 
